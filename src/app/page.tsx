@@ -607,6 +607,21 @@ export default function AftersalesPrototype() {
   const [workOrders, setWorkOrders] = useState<any[]>(initialWorkOrders);
   const [selected, setSelected] = useState<any | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  // beim Laden: Mitarbeiter aus localStorage holen
+useEffect(() => {
+  try {
+    const raw = localStorage.getItem("employees");
+    if (raw) setEmployees(JSON.parse(raw));
+  } catch {}
+}, []);
+
+// bei Änderungen: Mitarbeiter in localStorage sichern
+useEffect(() => {
+  try {
+    localStorage.setItem("employees", JSON.stringify(employees));
+  } catch {}
+}, [employees]);
+
 
   /* Dashboard: Auslastung heute je Rubrik (bleibt wie gehabt) */
   const utilizationByCategory = useMemo(() => {
