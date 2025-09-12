@@ -607,6 +607,7 @@ export default function AftersalesPrototype() {
   const [workOrders, setWorkOrders] = useState<any[]>(initialWorkOrders);
   const [selected, setSelected] = useState<any | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  
   // beim Laden: Mitarbeiter aus localStorage holen
 useEffect(() => {
   try {

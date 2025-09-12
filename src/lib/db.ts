@@ -1,19 +1,22 @@
 // src/lib/db.ts
-export type Employee = {
-  id: string;
-  name: string;
-  performance: number; // 50..150
-  category: "MECH" | "BODY" | "PREP";
-};
+import { promises as fs } from "fs";
+import path from "path";
 
-const store: { employees: Employee[] } = { employees: [] };
+const DATA_DIR =
+  process.env.NODE_ENV === "production" ? "/tmp" : path.join(process.cwd(), ".data");
+const FILE = path.join(DATA_DIR, "employees.json");
 
-export function getEmployees(): Employee[] {
-  return store.employees;
+export async function loadEmployees(): Promise<any[]> {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    const buf = await fs.readFile(FILE, "utf-8");
+    return JSON.parse(buf);
+  } catch {
+    return [];
+  }
 }
 
-export function addEmployee(e: Omit<Employee, "id"> & { id?: string }): Employee {
-  const emp: Employee = { id: e.id ?? crypto.randomUUID(), ...e };
-  store.employees.push(emp);
-  return emp;
+export async function saveEmployees(list: any[]) {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(FILE, JSON.stringify(list, null, 2), "utf-8");
 }
