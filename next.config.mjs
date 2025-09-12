@@ -1,3 +1,12 @@
-import withPWA from "next-pwa";
-const nextConfig = {}; // ggf. deine bisherigen Optionen hier lassen
-export default withPWA({ dest: "public", disable: process.env.NODE_ENV === "development" })(nextConfig);
+import withPWA from "@ducanh2912/next-pwa";
+
+const nextConfig = {
+  // deine bestehenden Next-Optionen bleiben hier (wenn du welche hast)
+};
+
+export default withPWA({
+  dest: "public",
+  register: true,
+  skipWaiting: true,
+  disable: process.env.NODE_ENV === "development",
+})(nextConfig);
