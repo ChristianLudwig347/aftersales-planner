@@ -1,51 +1,56 @@
 // src/app/api/employees/route.ts
-export const dynamic = 'force-dynamic'; // keine statische Seite cachen
+import { NextRequest, NextResponse } from 'next/server';
+import { z, ZodError } from 'zod';
+import { listEmployees, createEmployee, deleteEmployee } from '../../../lib/db';
+
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-type EmployeeCategory = 'MECH' | 'BODY' | 'PREP';
-type Employee = { id: string; name: string; performance: number; category: EmployeeCategory };
+const EmployeeSchema = z.object({
+  name: z.string().min(1).max(120),
+  category: z.enum(['MECH', 'BODY', 'PREP']),
+  performance: z.number().int().min(0).max(300),
+});
 
-declare global {
-  // einfacher In-Memory-Store für den Test (lebt pro Server-Prozess)
-  // Für echte Persistenz später: Postgres / Vercel KV.
-  // @ts-ignore
-  var __EMP_STORE__: Employee[] | undefined;
+// kleine Backwards-Compat: {rubric, efficiency} akzeptieren
+function normalize(body: any) {
+  if (body && body.rubric && body.efficiency != null) {
+    return { name: body.name, category: body.rubric, performance: Number(body.efficiency) };
+  }
+  return body;
 }
-
-// @ts-ignore
-const store: Employee[] = global.__EMP_STORE__ ?? (global.__EMP_STORE__ = []);
 
 export async function GET() {
-  return new Response(JSON.stringify(store), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  });
+  try {
+    const employees = await listEmployees();
+    return NextResponse.json({ ok: true, employees });
+  } catch (err: any) {
+    return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 });
+  }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    if (!body?.name || !body?.performance || !body?.category) {
-      return new Response(JSON.stringify({ error: 'name, performance, category required' }), {
-        status: 400,
-        headers: { 'content-type': 'application/json' },
-      });
+    const raw = await req.json();
+    const parsed = EmployeeSchema.parse(normalize(raw));
+    const employee = await createEmployee(parsed);
+    return NextResponse.json({ ok: true, employee }, { status: 201 });
+  } catch (err: any) {
+    if (err instanceof ZodError) {
+      return NextResponse.json({ ok: false, error: 'Validation failed', issues: err.issues }, { status: 400 });
     }
-    const emp: Employee = {
-      id: `emp-${Date.now()}`,
-      name: String(body.name),
-      performance: Number(body.performance),
-      category: body.category as EmployeeCategory,
-    };
-    store.push(emp);
-    return new Response(JSON.stringify(emp), {
-      status: 201,
-      headers: { 'content-type': 'application/json' },
-    });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
-      status: 400,
-      headers: { 'content-type': 'application/json' },
-    });
+    return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    if (!id) return NextResponse.json({ ok: false, error: 'Missing id' }, { status: 400 });
+    await deleteEmployee(id);
+    return NextResponse.json({ ok: true, id });
+  } catch (err: any) {
+    return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 });
   }
 }
