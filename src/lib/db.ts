@@ -1,62 +1,139 @@
 // src/lib/db.ts
 import { sql } from '@vercel/postgres';
 
-type EmployeeRow = {
+/** Typen */
+export type DayCategory = 'MECH' | 'BODY' | 'PREP';
+
+export type DayEntry = {
   id: string;
-  name: string;
-  category: 'MECH' | 'BODY' | 'PREP';
-  performance: number;
+  work_day: string;            // YYYY-MM-DD
+  drop_off: string | null;     // HH:MM
+  pick_up: string | null;      // HH:MM
+  title: string | null;
+  work_text: string;
+  category: DayCategory;
+  aw: number;
+  created_by: string | null;
   created_at: string;
-  updated_at: string;
 };
 
-// Einmalig sicherstellen, dass die Tabelle existiert (idempotent).
-async function ensureSchema() {
-  // ⚠️ wichtig für gen_random_uuid()
-  await sql/* sql */`create extension if not exists pgcrypto;`;
+export type DaySummaryRow = {
+  category: DayCategory;
+  capacity_aw: number;
+  used_aw: number;
+  remaining_aw: number;
+};
 
-  await sql/* sql */`
-    create table if not exists employees (
-      id uuid primary key default gen_random_uuid(),
-      name text not null,
-      category text not null check (category in ('MECH','BODY','PREP')),
-      performance int not null check (performance >= 0 and performance <= 300),
-      created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now()
-    );
+/** interner Helper: AW/Tag Basis (settings.aw_per_day, fallback 96) */
+async function getBaseAwPerDay(tx = sql) {
+  const r = await tx`
+    SELECT COALESCE(
+      (SELECT aw_per_day FROM settings LIMIT 1),
+      96
+    )::int AS aw_per_day
   `;
-
-  await sql/* sql */`create index if not exists idx_employees_category on employees(category);`;
-  await sql/* sql */`create index if not exists idx_employees_created_at on employees(created_at desc);`;
+  return Number(r.rows[0].aw_per_day);
 }
 
-export async function listEmployees(): Promise<EmployeeRow[]> {
-  await ensureSchema();
-  const { rows } = await sql<EmployeeRow>`
-    select id, name, category, performance, created_at, updated_at
-    from employees
-    order by name asc;
+/** Tagesbilanz je Rubrik (Capacity/Used/Remaining) */
+export async function getDaySummary(dateISO: string): Promise<DaySummaryRow[]> {
+  const base = await getBaseAwPerDay();
+  const res = await sql<DaySummaryRow>`
+    WITH cap AS (
+      SELECT e.category::text AS category,
+             SUM(ROUND(${base} * (e.performance::numeric / 100)))::int AS capacity_aw
+      FROM employees e
+      GROUP BY e.category
+    ),
+    used AS (
+      SELECT category::text AS category, COALESCE(SUM(aw),0)::int AS used_aw
+      FROM day_entries
+      WHERE work_day = ${dateISO}
+      GROUP BY category
+    )
+    SELECT c.category::text AS category,
+           COALESCE(c.capacity_aw, 0)::int AS capacity_aw,
+           COALESCE(u.used_aw, 0)::int AS used_aw,
+           (COALESCE(c.capacity_aw, 0) - COALESCE(u.used_aw, 0))::int AS remaining_aw
+    FROM cap c
+    LEFT JOIN used u ON u.category = c.category
+    ORDER BY c.category;
   `;
-  return rows;
+  return res.rows.map(r => ({
+    category: r.category as DayCategory,
+    capacity_aw: Number(r.capacity_aw ?? 0),
+    used_aw: Number(r.used_aw ?? 0),
+    remaining_aw: Number(r.remaining_aw ?? 0),
+  }));
 }
 
-export async function createEmployee(input: {
-  name: string;
-  category: 'MECH' | 'BODY' | 'PREP';
-  performance: number;
-}): Promise<EmployeeRow> {
-  await ensureSchema();
-  const { name, category, performance } = input;
-
-  const { rows } = await sql<EmployeeRow>`
-    insert into employees (name, category, performance)
-    values (${name}, ${category}, ${performance})
-    returning id, name, category, performance, created_at, updated_at;
+/** Tagesbilanz für eine Rubrik (für POST-Check) */
+export async function getRemainingFor(dateISO: string, category: DayCategory, tx = sql): Promise<number> {
+  const base = await getBaseAwPerDay(tx);
+  const r = await tx<{ remaining_aw: number }>`
+    WITH cap AS (
+      SELECT SUM(ROUND(${base} * (e.performance::numeric / 100)))::int AS capacity_aw
+      FROM employees e
+      WHERE e.category = ${category}
+    ),
+    used AS (
+      SELECT COALESCE(SUM(aw),0)::int AS used_aw
+      FROM day_entries
+      WHERE work_day = ${dateISO} AND category = ${category}
+    )
+    SELECT (COALESCE(cap.capacity_aw,0) - COALESCE(used.used_aw,0))::int AS remaining_aw
+    FROM cap, used;
   `;
-  return rows[0];
+  return Number(r.rows[0]?.remaining_aw ?? 0);
 }
 
-export async function deleteEmployee(id: string): Promise<void> {
-  await ensureSchema();
-  await sql/* sql */`delete from employees where id = ${id};`;
+/** Eintrag anlegen (mit Transaktion & AW-Prüfung) */
+export async function createDayEntry(input: {
+  work_day: string;
+  drop_off?: string | null;
+  pick_up?: string | null;
+  title?: string | null;
+  work_text: string;
+  category: DayCategory;
+  aw: number;
+  created_by?: string | null;
+}) {
+  return await sql.begin(async (tx) => {
+    const remaining = await getRemainingFor(input.work_day, input.category, tx);
+    if (remaining < input.aw) {
+      const err: any = new Error('INSUFFICIENT_CAPACITY');
+      err.code = 'INSUFFICIENT_CAPACITY';
+      err.details = { remaining, requested: input.aw };
+      throw err;
+    }
+
+    const ins = await tx<DayEntry>`
+      INSERT INTO day_entries (work_day, drop_off, pick_up, title, work_text, category, aw, created_by)
+      VALUES (
+        ${input.work_day},
+        ${input.drop_off ?? null},
+        ${input.pick_up ?? null},
+        ${input.title ?? null},
+        ${input.work_text},
+        ${input.category},
+        ${input.aw},
+        ${input.created_by ?? null}
+      )
+      RETURNING id, work_day, drop_off, pick_up, title, work_text, category, aw, created_by, created_at;
+    `;
+
+    const summary = await getDaySummary(input.work_day);
+    return { entry: ins.rows[0], summary };
+  });
+}
+
+/** Liste der Einträge im Bereich */
+export async function listDayEntries(fromISO: string, toISO: string) {
+  const r = await sql<DayEntry>`
+    SELECT id, work_day, drop_off, pick_up, title, work_text, category, aw, created_by, created_at
+    FROM day_entries
+    WHERE work_day BETWEEN ${fromISO} AND ${toISO}
+    ORDER BY work_day ASC, category ASC, created_at ASC;
+  `;
+  return r.rows;
 }
