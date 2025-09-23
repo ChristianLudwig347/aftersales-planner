@@ -1,8 +1,8 @@
 // src/app/page.tsx
-// Kalender-Startseite mit Wochen-Navigation und korrekter Base-URL-Ermittlung
+// Kalender-Startseite mit Wochen-Navigation und serverseitigem API-Fetch (inkl. Cookie-Forwarding)
 
 import Link from "next/link";
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -51,17 +51,24 @@ function formatWeekdayShort(d: Date) {
 
 // ---------- URL / API ----------
 function getBaseUrl() {
-  // 1) bevorzugt: per ENV setzen (z.B. http://localhost:3000)
   const env = (process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL)?.replace(/\/$/, "");
   if (env) return env;
-
-  // 2) aus Request-Headern ermitteln (funktioniert lokal & auf Vercel)
   const h = headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto =
-    h.get("x-forwarded-proto") ??
-    (process.env.NODE_ENV === "production" ? "https" : "http");
+  const proto = h.get("x-forwarded-proto") ?? (process.env.NODE_ENV === "production" ? "https" : "http");
   return `${proto}://${host}`;
+}
+
+// fetch-Wrapper: absolute URL + Cookies forwarden
+async function apiFetch(path: string, init?: RequestInit) {
+  const base = getBaseUrl();
+  const url = new URL(path, base).toString();
+  const cookieHeader = cookies().toString();
+  return fetch(url, {
+    cache: "no-store",
+    ...init,
+    headers: { ...(init?.headers || {}), cookie: cookieHeader },
+  });
 }
 
 type EmployeeCategory = "MECH" | "BODY" | "PREP";
@@ -91,28 +98,23 @@ type DayEntry = {
   aw: number;
 };
 
-async function fetchEmployees(base: string): Promise<Employee[]> {
-  const res = await fetch(`${base}/api/employees`, { cache: "no-store" });
+// ---------- API-Fetches ----------
+async function fetchEmployees(): Promise<Employee[]> {
+  const res = await apiFetch("/api/employees");
   if (!res.ok) throw new Error(`employees ${res.status}`);
   const data = await res.json();
   return data.employees ?? [];
 }
 
-async function fetchEntries(base: string, from: string, to: string): Promise<DayEntry[]> {
-  const url = `${base}/api/day-entries?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-  const res = await fetch(url, { cache: "no-store" });
+async function fetchEntries(from: string, to: string): Promise<DayEntry[]> {
+  const qs = new URLSearchParams({ from, to });
+  const res = await apiFetch(`/api/day-entries?${qs.toString()}`);
   if (!res.ok) throw new Error(`day-entries ${res.status}`);
   const data = await res.json();
   return data.entries ?? [];
 }
 
-export default async function Page({
-  searchParams,
-}: {
-  searchParams?: { start?: string };
-}) {
-  const baseUrl = getBaseUrl();
-
+export default async function Page({ searchParams }: { searchParams?: { start?: string } }) {
   // 1) Woche bestimmen
   const now = new Date();
   const todayUTC = toDate(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -126,8 +128,8 @@ export default async function Page({
 
   // 2) Daten laden
   const [employees, entries] = await Promise.all([
-    fetchEmployees(baseUrl),
-    fetchEntries(baseUrl, formatISO(weekStart), formatISO(weekEnd)),
+    fetchEmployees(),
+    fetchEntries(formatISO(weekStart), formatISO(weekEnd)),
   ]);
 
   // 3) Kapazität pro Rubrik
@@ -163,6 +165,11 @@ export default async function Page({
           </Link>
           <Link href={`/?start=${formatISO(nextWeek)}`}>
             <Button variant="outline">Nächste →</Button>
+          </Link>
+
+          {/* <<<<<<<<<<<<<<  NEU: Einstellungen-Button  >>>>>>>>>>>>>> */}
+          <Link href="/settings">
+            <Button variant="outline">Einstellungen</Button>
           </Link>
         </div>
       </div>

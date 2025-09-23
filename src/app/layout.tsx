@@ -3,6 +3,7 @@ import "./globals.css";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getSession } from "@/lib/auth";
+import LogoutButton from "@/components/LogoutButton"; // ⬅️ Logout-Button importieren
 
 // ⬇️ WICHTIG: Layout immer dynamisch rendern (Cookies/Session werden jedes Mal frisch gelesen)
 export const dynamic = "force-dynamic";
@@ -72,16 +73,7 @@ export default async function RootLayout({
               <NavLink href="/settings" label="Einstellungen" />
 
               {/* Logout-Button, wenn eingeloggt */}
-              {session && (
-                <form action="/api/auth/logout" method="post">
-                  <button
-                    type="submit"
-                    className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-red-600 hover:bg-red-50 transition"
-                  >
-                    Abmelden
-                  </button>
-                </form>
-              )}
+              {session && <LogoutButton />}
             </nav>
           </aside>
 

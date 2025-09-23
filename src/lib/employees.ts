@@ -9,36 +9,53 @@ export type Employee = {
   performance: number; // 0..300
 };
 
+function cleanName(name: string) {
+  return name?.trim();
+}
+function toInt(n: unknown) {
+  const v = typeof n === "string" ? parseInt(n, 10) : Number(n);
+  return Number.isFinite(v) ? v : NaN;
+}
+
 export async function listEmployees(): Promise<Employee[]> {
   const { rows } = await sql<Employee>`
     SELECT id, name, category, performance
     FROM employees
-    ORDER BY name;
+    ORDER BY name ASC;
   `;
-  return rows as Employee[];
+  return rows;
 }
 
 export async function createEmployee(
   input: Omit<Employee, "id">
 ): Promise<Employee> {
+  const name = cleanName(input.name);
+  const performance = toInt(input.performance);
+  const category = input.category;
+
   const { rows } = await sql<Employee>`
     INSERT INTO employees (name, category, performance)
-    VALUES (${input.name}, ${input.category}, ${input.performance})
+    VALUES (${name}, ${category}, ${performance})
     RETURNING id, name, category, performance;
   `;
   return rows[0];
 }
 
-// Patch-Update – nicht übergebene Felder bleiben unverändert
 export async function updateEmployee(
   id: string,
   patch: Partial<Omit<Employee, "id">>
 ): Promise<Employee | null> {
+  const name =
+    patch.name !== undefined ? cleanName(patch.name) : undefined;
+  const performance =
+    patch.performance !== undefined ? toInt(patch.performance) : undefined;
+  const category = patch.category;
+
   const { rows } = await sql<Employee>`
     UPDATE employees SET
-      name        = COALESCE(${patch.name},        name),
-      category    = COALESCE(${patch.category},    category),
-      performance = COALESCE(${patch.performance}, performance)
+      name        = COALESCE(${name},        name),
+      category    = COALESCE(${category},    category),
+      performance = COALESCE(${performance}, performance)
     WHERE id = ${id}
     RETURNING id, name, category, performance;
   `;
