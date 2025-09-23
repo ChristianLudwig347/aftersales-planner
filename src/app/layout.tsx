@@ -3,9 +3,9 @@ import "./globals.css";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getSession } from "@/lib/auth";
-import LogoutButton from "@/components/LogoutButton"; // ⬅️ Logout-Button importieren
+import LogoutButton from "@/components/LogoutButton";
 
-// ⬇️ WICHTIG: Layout immer dynamisch rendern (Cookies/Session werden jedes Mal frisch gelesen)
+// Layout immer dynamisch (Session/Cookies pro Request frisch)
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -30,6 +30,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Holt Session (intern wird await cookies() verwendet)
   const session = await getSession();
 
   return (
@@ -65,14 +66,9 @@ export default async function RootLayout({
             </div>
 
             <nav className="space-y-1">
-              {/* Startseite = Kalenderübersicht */}
               <NavLink href="/" label="Kalender" />
-              {/* Terminplaner */}
               <NavLink href="/terminplaner" label="Terminplaner" />
-              {/* Einstellungen */}
               <NavLink href="/settings" label="Einstellungen" />
-
-              {/* Logout-Button, wenn eingeloggt */}
               {session && <LogoutButton />}
             </nav>
           </aside>

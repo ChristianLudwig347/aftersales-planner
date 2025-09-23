@@ -10,10 +10,21 @@ const scrypt = promisify(_scrypt);
 // Konfiguration
 // =========================================
 export const SESSION_COOKIE = "ae.session";
+const JWT_ALG = "HS256" as const;
+
 const JWT_SECRET = new TextEncoder().encode(
   process.env.AUTH_SECRET || "dev-secret-change-me"
 );
 const DEFAULT_SESSION_TTL = "7d"; // z.B. '7d', '24h', '3600s'
+
+// Default-Cookie-Flags (kannst du bei Bedarf überschreiben)
+export const sessionCookieOptions = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  // maxAge setzt setSessionCookie dynamisch
+};
 
 // =========================================
 // Typen
@@ -24,6 +35,8 @@ export type Session = JWTPayload & {
   role: "MASTER" | "USER";
 };
 
+// =========================================
+// Password-Utils (Node scrypt)
 // =========================================
 /** Passwort sicher hashen (Node scrypt, kein Extra-Package nötig). */
 export async function hashPassword(plain: string): Promise<string> {
@@ -46,11 +59,11 @@ export async function comparePassword(
   const key = (await scrypt(plain, salt, 64)) as Buffer;
 
   // timing-safe Vergleich
-  return (
-    key.length === expected.length && timingSafeEqual(key, expected)
-  );
+  return key.length === expected.length && timingSafeEqual(key, expected);
 }
 
+// =========================================
+// JWT-Session
 // =========================================
 /** Neues JWT für eine Session signieren. */
 export async function signSession(
@@ -62,7 +75,7 @@ export async function signSession(
     email: payload.email,
     role: payload.role,
   })
-    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setProtectedHeader({ alg: JWT_ALG, typ: "JWT" })
     .setIssuedAt()
     .setExpirationTime(opts?.expiresIn ?? DEFAULT_SESSION_TTL)
     .sign(JWT_SECRET);
@@ -71,16 +84,20 @@ export async function signSession(
 /** JWT prüfen und Session zurückgeben (oder null). */
 export async function verifySession(token: string): Promise<Session | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, JWT_SECRET, {
+      algorithms: [JWT_ALG],
+      clockTolerance: 5, // 5s Toleranz gegen Clock Skew
+    });
     return payload as Session;
   } catch {
     return null;
   }
 }
 
-/** Session aus dem Next.js Cookies-Store lesen. */
+/** Session aus dem Next.js Cookies-Store lesen. (Next 15: cookies() awaiten!) */
 export async function getSession(): Promise<Session | null> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const store = await cookies(); // <— WICHTIG
+  const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   return await verifySession(token);
 }
@@ -99,10 +116,23 @@ export async function requireMaster(): Promise<Session> {
   return s;
 }
 
-/** Optionale Cookie-Einstellungen, falls du das Token setzen möchtest. */
-export const sessionCookieOptions = {
-  httpOnly: true,
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
-  path: "/",
-};
+// =========================================
+// Cookie Helper (setzen/löschen)
+// =========================================
+/** Session-Cookie setzen (z. B. nach Login). */
+export async function setSessionCookie(
+  token: string,
+  maxAgeSeconds = 60 * 60 * 24 * 7 // 7 Tage
+) {
+  const store = await cookies();
+  store.set(SESSION_COOKIE, token, {
+    ...sessionCookieOptions,
+    maxAge: maxAgeSeconds,
+  });
+}
+
+/** Session-Cookie löschen (z. B. beim Logout). */
+export async function clearSessionCookie() {
+  const store = await cookies();
+  store.delete(SESSION_COOKIE);
+}

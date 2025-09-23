@@ -1,13 +1,14 @@
 // src/app/page.tsx
 // Kalender-Startseite mit Wochen-Navigation und serverseitigem API-Fetch
-// (inkl. Async-Header/Cookies + Cookie-Forwarding)
 
 import Link from "next/link";
 import { headers, cookies } from "next/headers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-// ---------- Helpers (ohne externe libs) ----------
+export const dynamic = "force-dynamic";
+
+// ---------- Helpers ----------
 function toDate(y: number, m: number, d: number) {
   return new Date(Date.UTC(y, m, d));
 }
@@ -22,7 +23,6 @@ function formatISO(d: Date) {
   return `${y}-${m}-${dd}`;
 }
 function startOfISOWeek(d: Date) {
-  // ISO-Woche beginnt am Montag
   const day = d.getUTCDay(); // 0=So, 1=Mo, ... 6=Sa
   const diff = day === 0 ? -6 : 1 - day;
   const dt = new Date(d);
@@ -53,16 +53,13 @@ function formatWeekdayShort(d: Date) {
 
 // ---------- URL / API ----------
 async function getBaseUrl() {
-  // 1) bevorzugt: per ENV setzen (z.B. http://localhost:3000)
   const env = (process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL)?.replace(/\/$/, "");
   if (env) return env;
 
-  // 2) aus Request-Headern ermitteln (funktioniert lokal & auf Vercel)
+  // Next 15: headers() asynchron benutzen
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto =
-    h.get("x-forwarded-proto") ??
-    (process.env.NODE_ENV === "production" ? "https" : "http");
+  const proto = h.get("x-forwarded-proto") ?? (process.env.NODE_ENV === "production" ? "https" : "http");
   return `${proto}://${host}`;
 }
 
@@ -70,7 +67,7 @@ async function getBaseUrl() {
 async function apiFetch(path: string, init?: RequestInit) {
   const base = await getBaseUrl();
   const url = new URL(path, base).toString();
-  const cookieHeader = (await cookies()).toString();
+  const cookieHeader = (await cookies()).toString(); // Next 15: cookies() asynchron
   return fetch(url, {
     cache: "no-store",
     ...init,
@@ -84,9 +81,8 @@ const CATEGORY_LABEL: Record<EmployeeCategory, string> = {
   BODY: "Karosserie & Lack",
   PREP: "Aufbereitung",
 };
+const WEEK_DAYS = 6; // Mo–Sa
 
-// Aktuell planen wir Mo–Fr (WEEK_DAYS = 5). Wenn Samstag angezeigt werden soll → 6 setzen.
-const WEEK_DAYS = 5;
 const BASE_AW_PER_DAY = 96;
 
 type Employee = {
@@ -128,10 +124,13 @@ export default async function Page({
 }: {
   searchParams?: { start?: string };
 }) {
+  // Query-Param "start" (YYYY-MM-DD) auslesen
+  const startQuery = searchParams?.start;
+
   // 1) Woche bestimmen
   const now = new Date();
   const todayUTC = toDate(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const startParam = searchParams?.start ? parseISO(searchParams.start) : startOfISOWeek(todayUTC);
+  const startParam = startQuery ? parseISO(startQuery) : startOfISOWeek(todayUTC);
   const weekStart = startOfISOWeek(startParam);
   const weekEnd = addDays(weekStart, WEEK_DAYS - 1);
   const prevWeek = addWeeks(weekStart, -1);
@@ -188,7 +187,7 @@ export default async function Page({
       <div className="mb-2 text-lg font-medium">Woche {weekNumber}</div>
 
       {/* Tabellen-Grid */}
-      <div className="grid grid-cols-[200px_repeat(5,1fr)] gap-2 rounded-2xl border">
+      <div className="grid grid-cols-[200px_repeat(6,1fr)] gap-2 rounded-2xl border">
         <div className="p-3 font-medium">Rubrik</div>
         {days.map((d, i) => (
           <div key={i} className="p-3 font-medium border-l">

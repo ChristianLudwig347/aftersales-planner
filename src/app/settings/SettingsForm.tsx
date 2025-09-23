@@ -17,6 +17,43 @@ export default function SettingsForm({ initial }: Props) {
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  async function doSave() {
+    setMsg(null);
+    console.log("[SettingsForm] save clicked");
+
+    let opening: Opening;
+    try {
+      opening = JSON.parse(openingText);
+    } catch (e) {
+      console.error("[SettingsForm] JSON parse error", e);
+      setMsg("JSON der Öffnungszeiten ist ungültig.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        // Wichtig: JSON.stringify mit unserem Objekt
+        body: JSON.stringify({ timezone: tz, opening }),
+      });
+
+      const j = await res.json().catch(() => ({}));
+      console.log("[SettingsForm] response", res.status, j);
+
+      if (!res.ok || !j?.ok) {
+        setMsg(`Speichern fehlgeschlagen: ${j?.error ?? res.status}`);
+        return;
+      }
+
+      setMsg("Gespeichert.");
+      router.refresh();
+    } catch (err: any) {
+      console.error("[SettingsForm] fetch failed", err);
+      setMsg(`Netzwerkfehler: ${String(err?.message ?? err)}`);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[800px] p-6 space-y-4">
       <h1 className="text-2xl font-semibold">Einstellungen</h1>
@@ -29,7 +66,9 @@ export default function SettingsForm({ initial }: Props) {
         placeholder="Europe/Berlin"
       />
 
-      <label className="block text-sm font-medium mt-4">Öffnungszeiten (JSON)</label>
+      <label className="block text-sm font-medium mt-4">
+        Öffnungszeiten (JSON)
+      </label>
       <textarea
         value={openingText}
         onChange={(e) => setOpeningText(e.target.value)}
@@ -40,31 +79,9 @@ export default function SettingsForm({ initial }: Props) {
 
       <div className="flex items-center gap-3">
         <Button
+          type="button"
           disabled={pending}
-          onClick={() =>
-            start(async () => {
-              setMsg(null);
-              let opening: Opening;
-              try {
-                opening = JSON.parse(openingText);
-              } catch {
-                setMsg("JSON der Öffnungszeiten ist ungültig.");
-                return;
-              }
-              const res = await fetch("/api/settings", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ timezone: tz, opening }),
-              });
-              const j = await res.json().catch(() => ({}));
-              if (!res.ok || !j?.ok) {
-                setMsg(`Speichern fehlgeschlagen: ${j?.error ?? res.status}`);
-                return;
-              }
-              setMsg("Gespeichert.");
-              router.refresh();
-            })
-          }
+          onClick={() => start(doSave)}
         >
           {pending ? "Speichere…" : "Speichern"}
         </Button>
