@@ -3,22 +3,13 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import { findUserByEmail, createUserMaster } from '@/lib/db';
-import { hashPassword } from '@/lib/auth';
-
-type RegisterBody = {
-  email: string;
-  password: string;
-  name?: string;
-  role?: 'admin' | 'user';
-};
+import { hashPassword } from '@/lib/auth'; // Name anpassen, falls anders
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as Partial<RegisterBody>;
-    const email = body.email?.toLowerCase().trim();
-    const password = body.password ?? '';
-    const name = body.name ?? '';
-    const role = (body.role as RegisterBody['role']) ?? 'user';
+    const body = await req.json();
+    const email = (body.email as string)?.toLowerCase().trim();
+    const password = body.password as string;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -27,7 +18,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // existiert User schon?
+    // Prüfen, ob User schon existiert
     const existing = await findUserByEmail(email);
     if (existing) {
       return NextResponse.json(
@@ -36,33 +27,23 @@ export async function POST(req: Request) {
       );
     }
 
-    // Passwort hashen (scrypt, aus lib/auth.ts)
-    const hashed = await hashPassword(password);
+    // Passwort hashen (scrypt aus lib/auth.ts)
+    const password_hash = await hashPassword(password);
 
-    // anlegen
-    const user = await createUserMaster({
-      email,
-      password: hashed,
-      name,
-      role,
-    });
+    // neuen MASTER-User anlegen
+    const user = await createUserMaster(email, password_hash);
 
     return NextResponse.json(
       {
         ok: true,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        },
+        user,
       },
       { status: 201 }
     );
-  } catch (err) {
+  } catch (err: any) {
     console.error('register error', err);
     return NextResponse.json(
-      { ok: false, error: 'Registrierung fehlgeschlagen' },
+      { ok: false, error: err.message ?? 'Registrierung fehlgeschlagen' },
       { status: 500 }
     );
   }
