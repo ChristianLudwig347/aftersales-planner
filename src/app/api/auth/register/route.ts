@@ -3,13 +3,20 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import { findUserByEmail, createUserMaster } from '@/lib/db';
-import { hashPassword } from '@/lib/auth'; // Name anpassen, falls anders
+import { hashPassword } from '@/lib/auth';
+
+type RegisterBody = {
+  email: string;
+  password: string;
+  name?: string;
+  role?: 'MASTER' | 'USER';
+};
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const email = (body.email as string)?.toLowerCase().trim();
-    const password = body.password as string;
+    const body = (await req.json()) as Partial<RegisterBody>;
+    const email = body.email?.toLowerCase().trim();
+    const password = body.password;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -18,7 +25,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Prüfen, ob User schon existiert
+    // existiert User schon?
     const existing = await findUserByEmail(email);
     if (existing) {
       return NextResponse.json(
@@ -27,23 +34,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // Passwort hashen (scrypt aus lib/auth.ts)
+    // Passwort hashen (scrypt)
     const password_hash = await hashPassword(password);
 
-    // neuen MASTER-User anlegen
+    // MASTER-User anlegen (dein DB-Layer erwartet: (email, password_hash))
     const user = await createUserMaster(email, password_hash);
 
-    return NextResponse.json(
-      {
-        ok: true,
-        user,
-      },
-      { status: 201 }
-    );
-  } catch (err: any) {
+    return NextResponse.json({ ok: true, user }, { status: 201 });
+  } catch (err: unknown) {
     console.error('register error', err);
     return NextResponse.json(
-      { ok: false, error: err.message ?? 'Registrierung fehlgeschlagen' },
+      { ok: false, error: 'Registrierung fehlgeschlagen' },
       { status: 500 }
     );
   }
