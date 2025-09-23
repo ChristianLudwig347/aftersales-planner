@@ -6,7 +6,10 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST() {
-  const res = NextResponse.json({ ok: true });
+  // Redirect auf /login nach erfolgreichem Logout
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL ?? "https://aftersales-planner.vercel.app";
+  const res = NextResponse.redirect(new URL("/login", baseUrl));
 
   // Cookie löschen (leerer Wert + abgelaufenes Datum)
   res.cookies.set(SESSION_COOKIE, "", {
