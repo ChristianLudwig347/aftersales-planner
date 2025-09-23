@@ -1,74 +1,84 @@
-"use client";
+// src/app/login/page.tsx
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from 'next/navigation';
+import { FormEvent, useState } from 'react';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("christian.ludwig@auto-eckhardt.com");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const sp = useSearchParams();
+  const next = sp.get('next') || '/';
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault(); // wichtig: verhindert klassisches POST auf /login
+  const [email, setEmail] = useState('christian.ludwig@auto-eckhardt.com');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     setError(null);
-    setLoading(true);
+    setPending(true);
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password }),
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        cache: 'no-store',
       });
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) {
-        setError(
-          data?.error === "INVALID_LOGIN"
-            ? "E-Mail oder Passwort falsch."
-            : data?.error === "NO_PASSWORD_SET"
-            ? "Für diesen Benutzer ist kein Passwort gesetzt."
-            : "Vorgang fehlgeschlagen."
-        );
-        return;
+        throw new Error(data?.error ?? `HTTP ${res.status}`);
       }
 
-      // Erfolg: Cookie ist gesetzt → weiter auf Startseite/Kalender
-      router.replace("/");
-    } catch (e: any) {
-      setError("Netzwerkfehler. Bitte erneut versuchen.");
+      // ✅ Cookie ist gesetzt → Server Components (Layout) sofort neu rendern
+      router.replace(next);
+      router.refresh();
+    } catch (err: any) {
+      setError(err?.message ?? 'Login fehlgeschlagen');
     } finally {
-      setLoading(false);
+      setPending(false);
     }
   }
 
   return (
-    <div className="max-w-md mx-auto p-6">
-      <h1 className="text-2xl font-semibold mb-4">Login</h1>
+    <div className="max-w-sm space-y-4">
+      <h1 className="text-xl font-semibold">Login</h1>
+      {error && <div className="text-red-600">{error}</div>}
+
       <form onSubmit={onSubmit} className="space-y-3">
-        <input
-          className="w-full rounded-md border p-2 bg-blue-50"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="E-Mail"
-          autoComplete="username"
-        />
-        <input
-          className="w-full rounded-md border p-2 bg-blue-50"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Passwort"
-          autoComplete="current-password"
-        />
-        {error && <div className="text-red-600 text-sm">{error}</div>}
+        <div className="flex flex-col gap-2">
+          <label className="font-medium">E-Mail</label>
+          <input
+            className="border rounded p-2"
+            placeholder="E-Mail"
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="font-medium">Passwort</label>
+          <input
+            className="border rounded p-2"
+            placeholder="Passwort"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </div>
+
         <button
           type="submit"
-          disabled={loading}
-          className="px-4 py-2 rounded-md bg-black text-white disabled:opacity-60"
+          disabled={pending}
+          className="px-4 py-2 rounded bg-black text-white disabled:opacity-60"
         >
-          {loading ? "Bitte warten…" : "Anmelden"}
+          {pending ? 'Anmelden…' : 'Anmelden'}
         </button>
       </form>
     </div>
