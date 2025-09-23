@@ -4,6 +4,10 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getSession } from "@/lib/auth";
 
+// ⬇️ WICHTIG: Layout immer dynamisch rendern (Cookies/Session werden jedes Mal frisch gelesen)
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export const metadata: Metadata = {
   title: "Aftersales Planner",
   description: "Planung & Dispo für Aftersales",
