@@ -2,6 +2,7 @@
 import "./globals.css";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { getSession } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Aftersales Planner",
@@ -19,11 +20,13 @@ function NavLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await getSession();
+
   return (
     <html lang="de">
       <body className="antialiased">
@@ -32,15 +35,49 @@ export default function RootLayout({
             <div className="mb-6">
               <div className="text-xl font-semibold">Aftersales Planner</div>
               <div className="text-xs text-gray-500">MVP</div>
+
+              {/* Session-Info */}
+              <div className="mt-2 text-xs">
+                {session ? (
+                  <div className="inline-flex flex-col gap-1 rounded bg-green-50 text-green-800 px-2 py-1">
+                    <span className="font-medium">Eingeloggt</span>
+                    <span className="text-gray-700">
+                      {session.email} ({session.role})
+                    </span>
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-2 rounded bg-gray-100 text-gray-700 px-2 py-1">
+                    <span>Nicht eingeloggt</span>
+                    <Link
+                      href="/login"
+                      className="underline underline-offset-2 hover:opacity-80"
+                    >
+                      Anmelden
+                    </Link>
+                  </div>
+                )}
+              </div>
             </div>
 
             <nav className="space-y-1">
               {/* Startseite = Kalenderübersicht */}
               <NavLink href="/" label="Kalender" />
-              {/* Terminplaner statt „Teile“ */}
+              {/* Terminplaner */}
               <NavLink href="/terminplaner" label="Terminplaner" />
-              {/* weitere Menüpunkte */}
+              {/* Einstellungen */}
               <NavLink href="/settings" label="Einstellungen" />
+
+              {/* Logout-Button, wenn eingeloggt */}
+              {session && (
+                <form action="/api/auth/logout" method="post">
+                  <button
+                    type="submit"
+                    className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-red-600 hover:bg-red-50 transition"
+                  >
+                    Abmelden
+                  </button>
+                </form>
+              )}
             </nav>
           </aside>
 
