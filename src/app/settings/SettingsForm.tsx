@@ -1,3 +1,4 @@
+// src/app/settings/SettingsForm.tsx
 "use client";
 
 import { useState, useTransition } from "react";
@@ -32,7 +33,7 @@ export default function SettingsForm({ initial }: Props) {
       <textarea
         value={openingText}
         onChange={(e) => setOpeningText(e.target.value)}
-        rows={10}
+        rows={12}
         className="w-full font-mono text-sm border rounded-md px-3 py-2"
         spellCheck={false}
       />

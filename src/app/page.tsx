@@ -1,5 +1,6 @@
 // src/app/page.tsx
-// Kalender-Startseite mit Wochen-Navigation und serverseitigem API-Fetch (inkl. Cookie-Forwarding)
+// Kalender-Startseite mit Wochen-Navigation und serverseitigem API-Fetch
+// (inkl. Async-Header/Cookies + Cookie-Forwarding)
 
 import Link from "next/link";
 import { headers, cookies } from "next/headers";
@@ -21,6 +22,7 @@ function formatISO(d: Date) {
   return `${y}-${m}-${dd}`;
 }
 function startOfISOWeek(d: Date) {
+  // ISO-Woche beginnt am Montag
   const day = d.getUTCDay(); // 0=So, 1=Mo, ... 6=Sa
   const diff = day === 0 ? -6 : 1 - day;
   const dt = new Date(d);
@@ -50,20 +52,25 @@ function formatWeekdayShort(d: Date) {
 }
 
 // ---------- URL / API ----------
-function getBaseUrl() {
+async function getBaseUrl() {
+  // 1) bevorzugt: per ENV setzen (z.B. http://localhost:3000)
   const env = (process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL)?.replace(/\/$/, "");
   if (env) return env;
-  const h = headers();
+
+  // 2) aus Request-Headern ermitteln (funktioniert lokal & auf Vercel)
+  const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (process.env.NODE_ENV === "production" ? "https" : "http");
+  const proto =
+    h.get("x-forwarded-proto") ??
+    (process.env.NODE_ENV === "production" ? "https" : "http");
   return `${proto}://${host}`;
 }
 
 // fetch-Wrapper: absolute URL + Cookies forwarden
 async function apiFetch(path: string, init?: RequestInit) {
-  const base = getBaseUrl();
+  const base = await getBaseUrl();
   const url = new URL(path, base).toString();
-  const cookieHeader = cookies().toString();
+  const cookieHeader = (await cookies()).toString();
   return fetch(url, {
     cache: "no-store",
     ...init,
@@ -77,7 +84,9 @@ const CATEGORY_LABEL: Record<EmployeeCategory, string> = {
   BODY: "Karosserie & Lack",
   PREP: "Aufbereitung",
 };
-const WEEK_DAYS = 5; // Mo–Fr
+
+// Aktuell planen wir Mo–Fr (WEEK_DAYS = 5). Wenn Samstag angezeigt werden soll → 6 setzen.
+const WEEK_DAYS = 5;
 const BASE_AW_PER_DAY = 96;
 
 type Employee = {
@@ -114,7 +123,11 @@ async function fetchEntries(from: string, to: string): Promise<DayEntry[]> {
   return data.entries ?? [];
 }
 
-export default async function Page({ searchParams }: { searchParams?: { start?: string } }) {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: { start?: string };
+}) {
   // 1) Woche bestimmen
   const now = new Date();
   const todayUTC = toDate(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -166,8 +179,6 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
           <Link href={`/?start=${formatISO(nextWeek)}`}>
             <Button variant="outline">Nächste →</Button>
           </Link>
-
-          {/* <<<<<<<<<<<<<<  NEU: Einstellungen-Button  >>>>>>>>>>>>>> */}
           <Link href="/settings">
             <Button variant="outline">Einstellungen</Button>
           </Link>
