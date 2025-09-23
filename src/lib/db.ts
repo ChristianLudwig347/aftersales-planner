@@ -1,139 +1,109 @@
 // src/lib/db.ts
-import { sql } from '@vercel/postgres';
+// Minimal-DB-Layer für Users & Employees auf Vercel Postgres/Neon.
 
-/** Typen */
-export type DayCategory = 'MECH' | 'BODY' | 'PREP';
+import { sql } from "@vercel/postgres";
 
-export type DayEntry = {
+// ----------- Typen -----------
+export type Role = "MASTER" | "USER";
+
+export type EmployeeCategory = "MECH" | "BODY" | "PREP";
+
+export type Employee = {
   id: string;
-  work_day: string;            // YYYY-MM-DD
-  drop_off: string | null;     // HH:MM
-  pick_up: string | null;      // HH:MM
-  title: string | null;
-  work_text: string;
-  category: DayCategory;
-  aw: number;
-  created_by: string | null;
-  created_at: string;
+  name: string;
+  category: EmployeeCategory;
+  performance: number; // 0..300 (%)
 };
 
-export type DaySummaryRow = {
-  category: DayCategory;
-  capacity_aw: number;
-  used_aw: number;
-  remaining_aw: number;
-};
-
-/** interner Helper: AW/Tag Basis (settings.aw_per_day, fallback 96) */
-async function getBaseAwPerDay(tx = sql) {
-  const r = await tx`
-    SELECT COALESCE(
-      (SELECT aw_per_day FROM settings LIMIT 1),
-      96
-    )::int AS aw_per_day
-  `;
-  return Number(r.rows[0].aw_per_day);
+// ----------- USERS -----------
+export async function countUsers(): Promise<number> {
+  const { rows } = await sql`SELECT COUNT(*)::int AS count FROM users`;
+  return rows?.[0]?.count ?? 0;
 }
 
-/** Tagesbilanz je Rubrik (Capacity/Used/Remaining) */
-export async function getDaySummary(dateISO: string): Promise<DaySummaryRow[]> {
-  const base = await getBaseAwPerDay();
-  const res = await sql<DaySummaryRow>`
-    WITH cap AS (
-      SELECT e.category::text AS category,
-             SUM(ROUND(${base} * (e.performance::numeric / 100)))::int AS capacity_aw
-      FROM employees e
-      GROUP BY e.category
-    ),
-    used AS (
-      SELECT category::text AS category, COALESCE(SUM(aw),0)::int AS used_aw
-      FROM day_entries
-      WHERE work_day = ${dateISO}
-      GROUP BY category
-    )
-    SELECT c.category::text AS category,
-           COALESCE(c.capacity_aw, 0)::int AS capacity_aw,
-           COALESCE(u.used_aw, 0)::int AS used_aw,
-           (COALESCE(c.capacity_aw, 0) - COALESCE(u.used_aw, 0))::int AS remaining_aw
-    FROM cap c
-    LEFT JOIN used u ON u.category = c.category
-    ORDER BY c.category;
+export async function findUserByEmail(email: string): Promise<{
+  id: string;
+  email: string;
+  role: Role;
+  password_hash: string | null;
+} | null> {
+  const { rows } = await sql`
+    SELECT id, email, role, password_hash
+    FROM users
+    WHERE email = ${email}
+    LIMIT 1
   `;
-  return res.rows.map(r => ({
-    category: r.category as DayCategory,
-    capacity_aw: Number(r.capacity_aw ?? 0),
-    used_aw: Number(r.used_aw ?? 0),
-    remaining_aw: Number(r.remaining_aw ?? 0),
-  }));
+  return rows?.[0] ?? null;
 }
 
-/** Tagesbilanz für eine Rubrik (für POST-Check) */
-export async function getRemainingFor(dateISO: string, category: DayCategory, tx = sql): Promise<number> {
-  const base = await getBaseAwPerDay(tx);
-  const r = await tx<{ remaining_aw: number }>`
-    WITH cap AS (
-      SELECT SUM(ROUND(${base} * (e.performance::numeric / 100)))::int AS capacity_aw
-      FROM employees e
-      WHERE e.category = ${category}
-    ),
-    used AS (
-      SELECT COALESCE(SUM(aw),0)::int AS used_aw
-      FROM day_entries
-      WHERE work_day = ${dateISO} AND category = ${category}
-    )
-    SELECT (COALESCE(cap.capacity_aw,0) - COALESCE(used.used_aw,0))::int AS remaining_aw
-    FROM cap, used;
+export async function createUserMaster(
+  email: string,
+  password_hash: string
+): Promise<{ id: string; email: string; role: Role }> {
+  const { rows } = await sql`
+    INSERT INTO users (id, email, password_hash, role)
+    VALUES (gen_random_uuid(), ${email}, ${password_hash}, 'MASTER')
+    RETURNING id, email, role
   `;
-  return Number(r.rows[0]?.remaining_aw ?? 0);
+  return rows[0];
 }
 
-/** Eintrag anlegen (mit Transaktion & AW-Prüfung) */
-export async function createDayEntry(input: {
-  work_day: string;
-  drop_off?: string | null;
-  pick_up?: string | null;
-  title?: string | null;
-  work_text: string;
-  category: DayCategory;
-  aw: number;
-  created_by?: string | null;
-}) {
-  return await sql.begin(async (tx) => {
-    const remaining = await getRemainingFor(input.work_day, input.category, tx);
-    if (remaining < input.aw) {
-      const err: any = new Error('INSUFFICIENT_CAPACITY');
-      err.code = 'INSUFFICIENT_CAPACITY';
-      err.details = { remaining, requested: input.aw };
-      throw err;
-    }
+// ----------- EMPLOYEES -----------
+export async function listEmployees(): Promise<Employee[]> {
+  const { rows } = await sql<Employee>`
+    SELECT id, name, category, performance
+    FROM employees
+    ORDER BY name
+  `;
+  return rows;
+}
 
-    const ins = await tx<DayEntry>`
-      INSERT INTO day_entries (work_day, drop_off, pick_up, title, work_text, category, aw, created_by)
-      VALUES (
-        ${input.work_day},
-        ${input.drop_off ?? null},
-        ${input.pick_up ?? null},
-        ${input.title ?? null},
-        ${input.work_text},
-        ${input.category},
-        ${input.aw},
-        ${input.created_by ?? null}
-      )
-      RETURNING id, work_day, drop_off, pick_up, title, work_text, category, aw, created_by, created_at;
+export async function createEmployee(input: {
+  name: string;
+  category: EmployeeCategory;
+  performance: number;
+}): Promise<Employee> {
+  const { rows } = await sql<Employee>`
+    INSERT INTO employees (id, name, category, performance)
+    VALUES (gen_random_uuid(), ${input.name}, ${input.category}, ${input.performance})
+    RETURNING id, name, category, performance
+  `;
+  return rows[0];
+}
+
+export async function updateEmployee(
+  id: string,
+  patch: Partial<{
+    name: string;
+    category: EmployeeCategory;
+    performance: number;
+  }>
+): Promise<Employee | null> {
+  const sets = [];
+  if (patch.name !== undefined) sets.push(sql`name = ${patch.name}`);
+  if (patch.category !== undefined) sets.push(sql`category = ${patch.category}`);
+  if (patch.performance !== undefined) sets.push(sql`performance = ${patch.performance}`);
+
+  if (sets.length === 0) {
+    // Nichts zu updaten → aktuellen Datensatz zurückgeben
+    const { rows } = await sql<Employee>`
+      SELECT id, name, category, performance
+      FROM employees
+      WHERE id = ${id}
+      LIMIT 1
     `;
+    return rows[0] ?? null;
+  }
 
-    const summary = await getDaySummary(input.work_day);
-    return { entry: ins.rows[0], summary };
-  });
+  const { rows } = await sql<Employee>`
+    UPDATE employees
+    SET ${sql.join(sets, sql`, `)}
+    WHERE id = ${id}
+    RETURNING id, name, category, performance
+  `;
+  return rows[0] ?? null;
 }
 
-/** Liste der Einträge im Bereich */
-export async function listDayEntries(fromISO: string, toISO: string) {
-  const r = await sql<DayEntry>`
-    SELECT id, work_day, drop_off, pick_up, title, work_text, category, aw, created_by, created_at
-    FROM day_entries
-    WHERE work_day BETWEEN ${fromISO} AND ${toISO}
-    ORDER BY work_day ASC, category ASC, created_at ASC;
-  `;
-  return r.rows;
+export async function deleteEmployee(id: string): Promise<void> {
+  await sql`DELETE FROM employees WHERE id = ${id}`;
 }
