@@ -1,5 +1,5 @@
 // src/app/page.tsx
-// Kalender-Startseite mit Wochen-Navigation und serverseitigem API-Fetch
+// Kalender-Startseite mit Wochen-Navigation, API-Fetch und Ampel-Badge im Spaltenkopf
 
 import Link from "next/link";
 import { headers, cookies } from "next/headers";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
-// ---------- Helpers ----------
+/* ---------- Helpers ---------- */
 function toDate(y: number, m: number, d: number) {
   return new Date(Date.UTC(y, m, d));
 }
@@ -51,21 +51,20 @@ function formatWeekdayShort(d: Date) {
   return `${wd} ${dd}.${mm}.`;
 }
 
-// ---------- URL / API ----------
-async function getBaseUrl() {
+/* ---------- URL / API ---------- */
+function getBaseUrl() {
   const env = (process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL)?.replace(/\/$/, "");
   if (env) return env;
-  const h = await headers();
+  const h = headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? (process.env.NODE_ENV === "production" ? "https" : "http");
   return `${proto}://${host}`;
 }
-
 // fetch-Wrapper: absolute URL + Cookies forwarden
 async function apiFetch(path: string, init?: RequestInit) {
-  const base = await getBaseUrl();
+  const base = getBaseUrl();
   const url = new URL(path, base).toString();
-  const cookieHeader = (await cookies()).toString();
+  const cookieHeader = cookies().toString();
   return fetch(url, {
     cache: "no-store",
     ...init,
@@ -73,6 +72,7 @@ async function apiFetch(path: string, init?: RequestInit) {
   });
 }
 
+/* ---------- Typen/Const ---------- */
 type EmployeeCategory = "MECH" | "BODY" | "PREP";
 const CATEGORY_LABEL: Record<EmployeeCategory, string> = {
   MECH: "Mechatronik",
@@ -100,14 +100,13 @@ type DayEntry = {
   aw: number;
 };
 
-// ---------- API-Fetches ----------
+/* ---------- API-Fetches ---------- */
 async function fetchEmployees(): Promise<Employee[]> {
   const res = await apiFetch("/api/employees");
   if (!res.ok) throw new Error(`employees ${res.status}`);
   const data = await res.json();
   return data.employees ?? [];
 }
-
 async function fetchEntries(from: string, to: string): Promise<DayEntry[]> {
   const qs = new URLSearchParams({ from, to });
   const res = await apiFetch(`/api/day-entries?${qs.toString()}`);
@@ -116,11 +115,17 @@ async function fetchEntries(from: string, to: string): Promise<DayEntry[]> {
   return data.entries ?? [];
 }
 
-export default async function Page({
-  searchParams,
-}: {
-  searchParams?: { start?: string };
-}) {
+/* ---------- Ampel ---------- */
+function ampelClass(free: number, cap: number) {
+  if (cap <= 0) return "bg-gray-100 text-gray-600 border border-gray-200";
+  const ratio = free / cap;
+  if (ratio < 0.2) return "bg-red-100 text-red-800 border border-red-200";
+  if (ratio < 0.5) return "bg-yellow-100 text-yellow-800 border border-yellow-200";
+  return "bg-green-100 text-green-800 border border-green-200";
+}
+
+/* ---------- Page ---------- */
+export default async function Page({ searchParams }: { searchParams?: { start?: string } }) {
   // 1) Woche bestimmen
   const now = new Date();
   const todayUTC = toDate(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -138,21 +143,28 @@ export default async function Page({
     fetchEntries(formatISO(weekStart), formatISO(weekEnd)),
   ]);
 
-  // 3) Kapazität pro Rubrik
+  // 3) Kapazität pro Rubrik (täglich gleich)
   const capacityByCat: Record<EmployeeCategory, number> = { MECH: 0, BODY: 0, PREP: 0 };
   for (const e of employees) {
     const aw = Math.round((BASE_AW_PER_DAY * (e.performance || 100)) / 100);
     capacityByCat[e.category] += aw;
   }
+  const cats = Object.keys(CATEGORY_LABEL) as EmployeeCategory[];
+  const totalCapPerDay = cats.reduce((s, c) => s + (capacityByCat[c] ?? 0), 0);
 
-  // 4) Tage der Woche, Einträge mappen
+  // 4) Tage der Woche + AW-Verbrauch mappen
   const days = Array.from({ length: WEEK_DAYS }, (_, i) => addDays(weekStart, i));
   const entriesByKey = new Map<string, DayEntry[]>();
   const usedAwByKey = new Map<string, number>();
+  const usedTotalByDay = new Map<string, number>(); // neu: Summe je Tag (alle Rubriken)
+
   for (const entry of entries) {
     const key = `${entry.work_day}__${entry.category}`;
     (entriesByKey.get(key) ?? entriesByKey.set(key, []).get(key)!)?.push(entry);
-    usedAwByKey.set(key, (usedAwByKey.get(key) ?? 0) + (entry.aw || 0));
+
+    const aw = entry.aw || 0;
+    usedAwByKey.set(key, (usedAwByKey.get(key) ?? 0) + aw);
+    usedTotalByDay.set(entry.work_day, (usedTotalByDay.get(entry.work_day) ?? 0) + aw);
   }
 
   return (
@@ -182,14 +194,28 @@ export default async function Page({
 
       {/* Tabellen-Grid */}
       <div className="grid grid-cols-[200px_repeat(5,1fr)] gap-2 rounded-2xl border">
+        {/* Kopfzeile */}
         <div className="p-3 font-medium">Rubrik</div>
-        {days.map((d, i) => (
-          <div key={i} className="p-3 font-medium border-l">
-            {formatWeekdayShort(d)}
-          </div>
-        ))}
+        {days.map((d, i) => {
+          const dayKey = formatISO(d);
+          const usedTotal = usedTotalByDay.get(dayKey) ?? 0;
+          const freeTotal = Math.max(0, totalCapPerDay - usedTotal);
+          const ampel = ampelClass(freeTotal, totalCapPerDay);
 
-        {(Object.keys(CATEGORY_LABEL) as EmployeeCategory[]).map((cat) => (
+          return (
+            <div key={i} className="p-3 font-medium border-l">
+              <div className="flex items-center justify-between gap-2">
+                <span>{formatWeekdayShort(d)}</span>
+                <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${ampel}`}>
+                  {totalCapPerDay > 0 ? `${freeTotal} AW` : "–"}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Zeilen: je Rubrik */}
+        {cats.map((cat) => (
           <div key={cat} className="contents">
             <div className="p-3 border-t font-medium">{CATEGORY_LABEL[cat]}</div>
 
@@ -206,9 +232,7 @@ export default async function Page({
                   <div className="mb-2">
                     <Badge variant="secondary">
                       frei: <span className="ml-1 font-semibold">{free} AW</span>
-                      <span className="ml-1 text-muted-foreground">
-                        ({used}/{cap})
-                      </span>
+                      <span className="ml-1 text-muted-foreground">({used}/{cap})</span>
                     </Badge>
                   </div>
 
@@ -222,12 +246,13 @@ export default async function Page({
                     <ul className="space-y-1">
                       {cellEntries.map((e) => (
                         <li key={e.id} className="text-sm">
-                          <span className="font-medium">{e.title || "—"}</span> · {e.aw} AW
+                          {/* Link zur Bearbeiten-Seite, falls vorhanden */}
+                          {/* <Link href={`/terminplaner/edit/${e.id}`} className="underline"> */}
+                          <span className="font-medium">{e.title || "—"}</span>
+                          {/* </Link> */}
+                          {" · "}{e.aw} AW
                           {e.drop_off && e.pick_up && (
-                            <span className="text-muted-foreground">
-                              {" "}
-                              · {e.drop_off}–{e.pick_up}
-                            </span>
+                            <span className="text-muted-foreground"> · {e.drop_off}–{e.pick_up}</span>
                           )}
                         </li>
                       ))}
