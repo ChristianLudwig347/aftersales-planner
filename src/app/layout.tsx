@@ -58,10 +58,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <nav className="space-y-1">
               <NavLink href="/" label="Kalender" />
               <NavLink href="/terminplaner" label="Terminplaner" />
-              {/* Klassische Ansicht (falls du sie nutzt) */}
-              {/* <NavLink href="/classic" label="Klassische Ansicht" /> */}
-              {/* Einstellungen nur für MASTER */}
-              {session?.role === "MASTER" && <NavLink href="/settings" label="Einstellungen" />}
+
+              {/* Einstellungen + Mechaniker nur für MASTER */}
+              {session?.role === "MASTER" && (
+                <>
+                  <NavLink href="/settings" label="Einstellungen" />
+                  <NavLink href="/settings/mechanics" label="Mechaniker" />
+                </>
+              )}
+
               {session && <LogoutButton />}
             </nav>
           </aside>
