@@ -1,94 +1,92 @@
-'use client';
+// src/app/settings/SettingsForm.tsx
+"use client";
 
-import React, { useEffect, useState } from 'react';
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 
-type Settings = {
-  timezone: string;
-  opening: string;
-};
+type Opening = Record<string, any>;
+type Props = { initial: { timezone: string; opening: Opening } };
 
-export default function SettingsForm() {
-  const [timezone, setTimezone] = useState<string>('Europe/Berlin');
-  const [opening, setOpening] = useState<string>('08:00-17:00');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
+export default function SettingsForm({ initial }: Props) {
+  const router = useRouter();
+  const [tz, setTz] = useState(initial.timezone);
+  const [openingText, setOpeningText] = useState(
+    JSON.stringify(initial.opening ?? {}, null, 2)
+  );
+  const [msg, setMsg] = useState<string | null>(null);
+  const [pending, start] = useTransition();
 
-  // Laden
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await fetch('/api/settings', { cache: 'no-store' });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const d: { settings?: Settings } = await r.json();
-        if (!cancelled && d?.settings) {
-          setTimezone(d.settings.timezone);
-          setOpening(d.settings.opening);
-        }
-      } catch (e) {
-        if (!cancelled) setError('Einstellungen konnten nicht geladen werden.');
-      } finally {
-        if (!cancelled) setLoaded(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  async function doSave() {
+    setMsg(null);
+    console.log("[SettingsForm] save clicked");
 
-  // Speichern
-  async function save() {
-    setSaving(true);
-    setError(null);
+    let opening: Opening;
     try {
-      const r = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ timezone, opening }),
-      });
-      const d: { ok?: boolean; error?: string } = await r.json();
-      if (!r.ok || !d.ok) throw new Error(d.error ?? 'Speichern fehlgeschlagen');
+      opening = JSON.parse(openingText);
     } catch (e) {
-      setError('Speichern fehlgeschlagen.');
-    } finally {
-      setSaving(false);
+      console.error("[SettingsForm] JSON parse error", e);
+      setMsg("JSON der Öffnungszeiten ist ungültig.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        // Wichtig: JSON.stringify mit unserem Objekt
+        body: JSON.stringify({ timezone: tz, opening }),
+      });
+
+      const j = await res.json().catch(() => ({}));
+      console.log("[SettingsForm] response", res.status, j);
+
+      if (!res.ok || !j?.ok) {
+        setMsg(`Speichern fehlgeschlagen: ${j?.error ?? res.status}`);
+        return;
+      }
+
+      setMsg("Gespeichert.");
+      router.refresh();
+    } catch (err: any) {
+      console.error("[SettingsForm] fetch failed", err);
+      setMsg(`Netzwerkfehler: ${String(err?.message ?? err)}`);
     }
   }
 
-  if (!loaded) return <div>Lade Einstellungen …</div>;
-
   return (
-    <div className="space-y-4">
-      {error && <div className="text-red-600">{error}</div>}
+    <div className="mx-auto max-w-[800px] p-6 space-y-4">
+      <h1 className="text-2xl font-semibold">Einstellungen</h1>
 
-      <div className="flex flex-col gap-2">
-        <label className="font-medium">Zeitzone</label>
-        <input
-          className="border rounded p-2"
-          value={timezone}
-          onChange={(e) => setTimezone(e.target.value)}
-        />
+      <label className="block text-sm font-medium">Zeitzone</label>
+      <input
+        value={tz}
+        onChange={(e) => setTz(e.target.value)}
+        className="w-full border rounded-md px-3 py-2"
+        placeholder="Europe/Berlin"
+      />
+
+      <label className="block text-sm font-medium mt-4">
+        Öffnungszeiten (JSON)
+      </label>
+      <textarea
+        value={openingText}
+        onChange={(e) => setOpeningText(e.target.value)}
+        rows={12}
+        className="w-full font-mono text-sm border rounded-md px-3 py-2"
+        spellCheck={false}
+      />
+
+      <div className="flex items-center gap-3">
+        <Button
+          type="button"
+          disabled={pending}
+          onClick={() => start(doSave)}
+        >
+          {pending ? "Speichere…" : "Speichern"}
+        </Button>
+        {msg && <span className="text-sm text-muted-foreground">{msg}</span>}
       </div>
-
-      <div className="flex flex-col gap-2">
-        <label className="font-medium">Öffnungszeiten</label>
-        <input
-          className="border rounded p-2"
-          value={opening}
-          onChange={(e) => setOpening(e.target.value)}
-          placeholder="z. B. 08:00-17:00"
-        />
-      </div>
-
-      <button
-        type="button"
-        onClick={save}
-        disabled={saving}
-        className="px-4 py-2 rounded bg-black text-white disabled:opacity-60"
-      >
-        {saving ? 'Speichere…' : 'Speichern'}
-      </button>
     </div>
   );
 }

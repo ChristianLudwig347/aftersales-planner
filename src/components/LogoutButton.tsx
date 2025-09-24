@@ -1,39 +1,26 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-// falls du shadcn/ui nutzt:
-import { Button } from '@/components/ui/button';
+import { useRouter } from "next/navigation";
+import { useTransition } from "react";
 
-export default function LogoutButton({
-  label = 'Abmelden',
-  confirm = false,
-}: { label?: string; confirm?: boolean }) {
+export default function LogoutButton() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const [pending, start] = useTransition();
 
-  async function onLogout() {
-    if (confirm && !window.confirm('Wirklich abmelden?')) return;
-
-    try {
-      setLoading(true);
-      // API: DELETE /api/auth/login – löscht das ae.session-Cookie
-      const res = await fetch('/api/auth/login', { method: 'DELETE' });
-      // optional: Fehlerbehandlung
-      if (!res.ok) console.warn('Logout response not ok:', await res.text());
-      router.push('/login');
-    } catch (e) {
-      console.error(e);
-      router.push('/login');
-    } finally {
-      setLoading(false);
-    }
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST", cache: "no-store" });
+    router.replace("/");
+    router.refresh(); // ⬅️ Session im Layout sofort aktualisieren
   }
 
-  // Falls du kein shadcn/ui hast, ersetze <Button> durch <button>
   return (
-    <Button onClick={onLogout} disabled={loading} variant="outline">
-      {loading ? '…' : label}
-    </Button>
+    <button
+      type="button"
+      onClick={() => start(handleLogout)}
+      className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-red-600 hover:bg-red-50 transition disabled:opacity-60"
+      disabled={pending}
+    >
+      {pending ? "Abmelden…" : "Abmelden"}
+    </button>
   );
 }

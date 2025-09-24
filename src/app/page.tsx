@@ -1,12 +1,14 @@
 // src/app/page.tsx
-// Kalender-Startseite mit Wochen-Navigation und korrekter Base-URL-Ermittlung
+// Kalender-Startseite mit Wochen-Navigation und serverseitigem API-Fetch
 
 import Link from "next/link";
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-// ---------- Helpers (ohne externe libs) ----------
+export const dynamic = "force-dynamic";
+
+// ---------- Helpers ----------
 function toDate(y: number, m: number, d: number) {
   return new Date(Date.UTC(y, m, d));
 }
@@ -50,18 +52,27 @@ function formatWeekdayShort(d: Date) {
 }
 
 // ---------- URL / API ----------
-function getBaseUrl() {
-  // 1) bevorzugt: per ENV setzen (z.B. http://localhost:3000)
+async function getBaseUrl() {
   const env = (process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL)?.replace(/\/$/, "");
   if (env) return env;
 
-  // 2) aus Request-Headern ermitteln (funktioniert lokal & auf Vercel)
-  const h = headers();
+  // Next 15: headers() asynchron benutzen
+  const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto =
-    h.get("x-forwarded-proto") ??
-    (process.env.NODE_ENV === "production" ? "https" : "http");
+  const proto = h.get("x-forwarded-proto") ?? (process.env.NODE_ENV === "production" ? "https" : "http");
   return `${proto}://${host}`;
+}
+
+// fetch-Wrapper: absolute URL + Cookies forwarden
+async function apiFetch(path: string, init?: RequestInit) {
+  const base = await getBaseUrl();
+  const url = new URL(path, base).toString();
+  const cookieHeader = (await cookies()).toString(); // Next 15: cookies() asynchron
+  return fetch(url, {
+    cache: "no-store",
+    ...init,
+    headers: { ...(init?.headers || {}), cookie: cookieHeader },
+  });
 }
 
 type EmployeeCategory = "MECH" | "BODY" | "PREP";
@@ -70,7 +81,8 @@ const CATEGORY_LABEL: Record<EmployeeCategory, string> = {
   BODY: "Karosserie & Lack",
   PREP: "Aufbereitung",
 };
-const WEEK_DAYS = 5; // Mo–Fr
+const WEEK_DAYS = 6; // Mo–Sa
+
 const BASE_AW_PER_DAY = 96;
 
 type Employee = {
@@ -91,16 +103,17 @@ type DayEntry = {
   aw: number;
 };
 
-async function fetchEmployees(base: string): Promise<Employee[]> {
-  const res = await fetch(`${base}/api/employees`, { cache: "no-store" });
+// ---------- API-Fetches ----------
+async function fetchEmployees(): Promise<Employee[]> {
+  const res = await apiFetch("/api/employees");
   if (!res.ok) throw new Error(`employees ${res.status}`);
   const data = await res.json();
   return data.employees ?? [];
 }
 
-async function fetchEntries(base: string, from: string, to: string): Promise<DayEntry[]> {
-  const url = `${base}/api/day-entries?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-  const res = await fetch(url, { cache: "no-store" });
+async function fetchEntries(from: string, to: string): Promise<DayEntry[]> {
+  const qs = new URLSearchParams({ from, to });
+  const res = await apiFetch(`/api/day-entries?${qs.toString()}`);
   if (!res.ok) throw new Error(`day-entries ${res.status}`);
   const data = await res.json();
   return data.entries ?? [];
@@ -111,12 +124,13 @@ export default async function Page({
 }: {
   searchParams?: { start?: string };
 }) {
-  const baseUrl = getBaseUrl();
+  // Query-Param "start" (YYYY-MM-DD) auslesen
+  const startQuery = searchParams?.start;
 
   // 1) Woche bestimmen
   const now = new Date();
   const todayUTC = toDate(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const startParam = searchParams?.start ? parseISO(searchParams.start) : startOfISOWeek(todayUTC);
+  const startParam = startQuery ? parseISO(startQuery) : startOfISOWeek(todayUTC);
   const weekStart = startOfISOWeek(startParam);
   const weekEnd = addDays(weekStart, WEEK_DAYS - 1);
   const prevWeek = addWeeks(weekStart, -1);
@@ -126,8 +140,8 @@ export default async function Page({
 
   // 2) Daten laden
   const [employees, entries] = await Promise.all([
-    fetchEmployees(baseUrl),
-    fetchEntries(baseUrl, formatISO(weekStart), formatISO(weekEnd)),
+    fetchEmployees(),
+    fetchEntries(formatISO(weekStart), formatISO(weekEnd)),
   ]);
 
   // 3) Kapazität pro Rubrik
@@ -164,13 +178,16 @@ export default async function Page({
           <Link href={`/?start=${formatISO(nextWeek)}`}>
             <Button variant="outline">Nächste →</Button>
           </Link>
+          <Link href="/settings">
+            <Button variant="outline">Einstellungen</Button>
+          </Link>
         </div>
       </div>
 
       <div className="mb-2 text-lg font-medium">Woche {weekNumber}</div>
 
       {/* Tabellen-Grid */}
-      <div className="grid grid-cols-[200px_repeat(5,1fr)] gap-2 rounded-2xl border">
+      <div className="grid grid-cols-[200px_repeat(6,1fr)] gap-2 rounded-2xl border">
         <div className="p-3 font-medium">Rubrik</div>
         {days.map((d, i) => (
           <div key={i} className="p-3 font-medium border-l">

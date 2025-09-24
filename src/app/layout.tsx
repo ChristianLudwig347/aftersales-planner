@@ -3,8 +3,8 @@ import "./globals.css";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getSession } from "@/lib/auth";
+import LogoutButton from "@/components/LogoutButton";
 
-// ⬇️ WICHTIG: Layout immer dynamisch rendern (Cookies/Session werden jedes Mal frisch gelesen)
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -24,11 +24,7 @@ function NavLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
 
   return (
@@ -40,7 +36,6 @@ export default async function RootLayout({
               <div className="text-xl font-semibold">Aftersales Planner</div>
               <div className="text-xs text-gray-500">MVP</div>
 
-              {/* Session-Info */}
               <div className="mt-2 text-xs">
                 {session ? (
                   <div className="inline-flex flex-col gap-1 rounded bg-green-50 text-green-800 px-2 py-1">
@@ -52,10 +47,7 @@ export default async function RootLayout({
                 ) : (
                   <div className="inline-flex items-center gap-2 rounded bg-gray-100 text-gray-700 px-2 py-1">
                     <span>Nicht eingeloggt</span>
-                    <Link
-                      href="/login"
-                      className="underline underline-offset-2 hover:opacity-80"
-                    >
+                    <Link href="/login" className="underline underline-offset-2 hover:opacity-80">
                       Anmelden
                     </Link>
                   </div>
@@ -64,24 +56,13 @@ export default async function RootLayout({
             </div>
 
             <nav className="space-y-1">
-              {/* Startseite = Kalenderübersicht */}
               <NavLink href="/" label="Kalender" />
-              {/* Terminplaner */}
               <NavLink href="/terminplaner" label="Terminplaner" />
-              {/* Einstellungen */}
-              <NavLink href="/settings" label="Einstellungen" />
-
-              {/* Logout-Button, wenn eingeloggt */}
-              {session && (
-                <form action="/api/auth/logout" method="post">
-                  <button
-                    type="submit"
-                    className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-red-600 hover:bg-red-50 transition"
-                  >
-                    Abmelden
-                  </button>
-                </form>
-              )}
+              {/* Klassische Ansicht (falls du sie nutzt) */}
+              {/* <NavLink href="/classic" label="Klassische Ansicht" /> */}
+              {/* Einstellungen nur für MASTER */}
+              {session?.role === "MASTER" && <NavLink href="/settings" label="Einstellungen" />}
+              {session && <LogoutButton />}
             </nav>
           </aside>
 
