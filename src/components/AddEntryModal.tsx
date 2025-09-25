@@ -15,9 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
-// Falls ihr eine strikte Typisierung für Kategorien nutzt,
-// kannst du hier gerne das Union-Types aus eurem Code übernehmen.
-// Für die Wiederverwendbarkeit lassen wir's hier als string.
 type Props = {
   workDay: string;      // ISO-YYYY-MM-DD (z. B. "2025-09-25")
   category: string;     // z. B. "MECH" | "BODY" | "PREP"
@@ -93,7 +90,6 @@ export default function AddEntryModal({
       setOpen(false);
 
       // Seite/serverseitige Daten aktualisieren
-      // (funktioniert aus Client-Komponente heraus)
       router.refresh();
 
       // Optionaler Callback des Parents
@@ -126,8 +122,9 @@ export default function AddEntryModal({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
+        {/* 👉 Optisch enger & klarer */}
+        <DialogContent className="sm:max-w-lg rounded-xl bg-white dark:bg-zinc-900">
+          <DialogHeader className="pb-2">
             <DialogTitle>Neuer Auftrag</DialogTitle>
             <DialogDescription>
               {category} • {workDay}
@@ -142,6 +139,7 @@ export default function AddEntryModal({
                 placeholder="z. B. Bremsen VA + Service"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                autoFocus
               />
             </div>
 
