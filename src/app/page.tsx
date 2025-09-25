@@ -235,16 +235,18 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
                   {pctBadge(freePct)}
                 </div>
 
-                {/* 👇 Neu: Auslastung je Rubrik direkt unter dem Tageskopf */}
+                {/* Auslastung je Rubrik direkt unter dem Tageskopf */}
                 <div className="mt-2 space-y-1 text-xs text-muted-foreground">
                   {(Object.keys(CATEGORY_LABEL) as EmployeeCategory[]).map((cat) => {
                     const cap = capacityByCat[cat] ?? 0;
                     const usedCat = usedAwByKey.get(`${iso}__${cat}`) ?? 0;
+                    const usedPct = cap > 0 ? Math.round((usedCat / cap) * 100) : 0;
+                    const usedPctText = cap > 0 ? `${usedPct}%` : "—";
                     return (
-                      <div key={cat} className="flex justify-between">
+                      <div key={cat} className="flex justify-between tabular-nums">
                         <span>{CATEGORY_LABEL[cat]}</span>
                         <span>
-                          {usedCat}/{cap} AW
+                          {usedCat}/{cap} AW <span className="ml-1">({usedPctText})</span>
                         </span>
                       </div>
                     );
