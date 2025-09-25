@@ -6,6 +6,9 @@ import { headers, cookies } from "next/headers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
+// ✅ NEU: Modal importieren
+import AddEntryModal from "@/components/AddEntryModal";
+
 export const dynamic = "force-dynamic";
 
 // ---------- Helpers ----------
@@ -245,13 +248,17 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
 
               return (
                 <div key={i} className="p-3 border-t border-l">
-                  <div className="mb-2">
+                  {/* Kopf der Zelle: Kapazität + NEU: Quick-Add */}
+                  <div className="mb-2 flex items-center justify-between">
                     <Badge variant="secondary">
                       frei: <span className="ml-1 font-semibold">{free} AW</span>
                       <span className="ml-1 text-muted-foreground">
                         ({used}/{cap})
                       </span>
                     </Badge>
+
+                    {/* ✅ NEU: Quick-Add Modal-Trigger */}
+                    <AddEntryModal workDay={workDay} category={cat} />
                   </div>
 
                   {cap === 0 ? (
