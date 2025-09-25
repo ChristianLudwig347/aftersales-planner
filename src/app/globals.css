@@ -1,6 +1,22 @@
 /* src/app/globals.css */
-@import "tailwindcss";
 
-/* Optional: kleine Baseline, damit es wieder „wie früher“ wirkt */
-html, body { height: 100%; }
-* { -webkit-tap-highlight-color: transparent; }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Baseline – bewusst simpel halten, um PostCSS-Probleme auszuschließen */
+* { box-sizing: border-box; }
+html, body, :root { height: 100%; }
+
+/* Optional: neutrales Default-Theme */
+body {
+  background-color: #ffffff;
+  color: #0a0a0a;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #0a0a0a;
+    color: #f5f5f5;
+  }
+}
