@@ -227,11 +227,28 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
             const free = Math.max(0, totalCapacityPerDay - used);
             const freePct =
               totalCapacityPerDay > 0 ? Math.round((free / totalCapacityPerDay) * 100) : null;
+
             return (
               <div key={i} className="p-3 font-medium">
-                <div className="flex items-center">
-                  {formatWeekdayShort(d)}
+                <div className="flex items-center justify-between">
+                  <span>{formatWeekdayShort(d)}</span>
                   {pctBadge(freePct)}
+                </div>
+
+                {/* 👇 Neu: Auslastung je Rubrik direkt unter dem Tageskopf */}
+                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  {(Object.keys(CATEGORY_LABEL) as EmployeeCategory[]).map((cat) => {
+                    const cap = capacityByCat[cat] ?? 0;
+                    const usedCat = usedAwByKey.get(`${iso}__${cat}`) ?? 0;
+                    return (
+                      <div key={cat} className="flex justify-between">
+                        <span>{CATEGORY_LABEL[cat]}</span>
+                        <span>
+                          {usedCat}/{cap} AW
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
