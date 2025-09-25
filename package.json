@@ -8,5 +8,7 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "engines": { "node": "20.x" }
+  "engines": {
+    "node": "20.x"
+  }
 }
