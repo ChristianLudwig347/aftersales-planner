@@ -161,25 +161,32 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
     usedAwByDay.set(entry.work_day, usedDay + (entry.aw || 0));
   }
 
-  // Helper: Badge-Styles je nach freien Prozent
-  function pctBadge(freePct: number | null) {
+  // ---------- Badges ----------
+  // Prozent-Badge für freie Kapazität (rubrik-basiert).
+  // <0% => Überplanung: tiefrot
+  function pctBadge(freePct: number | null, compact = false) {
     if (freePct === null) {
       return (
-        <span className="ml-2 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-800">
+        <span className={"inline-flex items-center rounded-full bg-gray-100 text-gray-800 " + (compact ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]")}>
           —%
         </span>
       );
     }
-    const cls =
+    let cls =
       freePct >= 40
         ? "bg-green-100 text-green-800"
         : freePct >= 15
         ? "bg-yellow-100 text-yellow-800"
         : "bg-red-100 text-red-800";
+    if (freePct < 0) {
+      cls = "bg-red-600 text-white"; // Überplanung -> tiefrot
+    }
     return (
       <span
         className={
-          "ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold " +
+          "inline-flex items-center rounded-full font-semibold " +
+          (compact ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]") +
+          " " +
           cls
         }
         title="freie Kapazität (in %)"
@@ -223,16 +230,11 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
           <div className="p-3 font-medium">Rubrik</div>
           {days.map((d, i) => {
             const iso = formatISO(d);
-            const used = usedAwByDay.get(iso) ?? 0;
-            const free = Math.max(0, totalCapacityPerDay - used);
-            const freePct =
-              totalCapacityPerDay > 0 ? Math.round((free / totalCapacityPerDay) * 100) : null;
-
+            // Tages-Prozent-Badge ENTFERNT – nur Datum stehen lassen
             return (
               <div key={i} className="p-3 font-medium">
                 <div className="flex items-center justify-between">
                   <span>{formatWeekdayShort(d)}</span>
-                  {pctBadge(freePct)}
                 </div>
 
                 {/* Auslastung je Rubrik direkt unter dem Tageskopf */}
@@ -240,13 +242,15 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
                   {(Object.keys(CATEGORY_LABEL) as EmployeeCategory[]).map((cat) => {
                     const cap = capacityByCat[cat] ?? 0;
                     const usedCat = usedAwByKey.get(`${iso}__${cat}`) ?? 0;
-                    const usedPct = cap > 0 ? Math.round((usedCat / cap) * 100) : 0;
-                    const usedPctText = cap > 0 ? `${usedPct}%` : "—";
+                    const freeAw = cap - usedCat;
+                    const freePct = cap > 0 ? Math.round((freeAw / cap) * 100) : null;
+
                     return (
-                      <div key={cat} className="flex justify-between tabular-nums">
-                        <span>{CATEGORY_LABEL[cat]}</span>
-                        <span>
-                          {usedCat}/{cap} AW <span className="ml-1">({usedPctText})</span>
+                      <div key={cat} className="flex items-center justify-between tabular-nums">
+                        <span className="text-black/80 dark:text-white/80">{CATEGORY_LABEL[cat]}</span>
+                        <span className="flex items-center gap-2">
+                          <span>{usedCat}/{cap} AW</span>
+                          {pctBadge(freePct, true)}
                         </span>
                       </div>
                     );
