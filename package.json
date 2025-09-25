@@ -1,7 +1,8 @@
 {
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",           // ⬅️ Turbopack für Prod aus
+    "build": "next build",
+    "vercel-build": "next build",   // <- Vercel nutzt dieses Script, wenn vorhanden
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
