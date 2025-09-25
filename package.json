@@ -2,10 +2,11 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "vercel-build": "next build",   // <- Vercel nutzt dieses Script, wenn vorhanden
+    "vercel-build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest"
-  }
+  },
+  "engines": { "node": "20.x" }
 }
