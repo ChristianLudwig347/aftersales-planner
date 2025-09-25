@@ -5,8 +5,6 @@ import Link from "next/link";
 import { headers, cookies } from "next/headers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-// ✅ NEU: Modal importieren
 import AddEntryModal from "@/components/AddEntryModal";
 
 export const dynamic = "force-dynamic";
@@ -216,77 +214,82 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
 
       <div className="mb-2 text-lg font-medium">Woche {weekNumber}</div>
 
-      {/* Tabellen-Grid */}
-      <div className="grid grid-cols-[200px_repeat(5,1fr)] gap-2 rounded-2xl border">
-        <div className="p-3 font-medium">Rubrik</div>
-        {days.map((d, i) => {
-          const iso = formatISO(d);
-          const used = usedAwByDay.get(iso) ?? 0;
-          const free = Math.max(0, totalCapacityPerDay - used);
-          const freePct =
-            totalCapacityPerDay > 0 ? Math.round((free / totalCapacityPerDay) * 100) : null;
-          return (
-            <div key={i} className="p-3 font-medium border-l">
-              {formatWeekdayShort(d)}
-              {/* Prozent-Ampel */}
-              {pctBadge(freePct)}
-            </div>
-          );
-        })}
-
-        {(Object.keys(CATEGORY_LABEL) as EmployeeCategory[]).map((cat) => (
-          <div key={cat} className="contents">
-            <div className="p-3 border-t font-medium">{CATEGORY_LABEL[cat]}</div>
-
-            {days.map((d, i) => {
-              const workDay = formatISO(d);
-              const key = `${workDay}__${cat}`;
-              const cap = capacityByCat[cat] ?? 0;
-              const used = usedAwByKey.get(key) ?? 0;
-              const free = Math.max(0, cap - used);
-              const cellEntries = entriesByKey.get(key) ?? [];
-
-              return (
-                <div key={i} className="p-3 border-t border-l">
-                  {/* Kopf der Zelle: Kapazität + NEU: Quick-Add */}
-                  <div className="mb-2 flex items-center justify-between">
-                    <Badge variant="secondary">
-                      frei: <span className="ml-1 font-semibold">{free} AW</span>
-                      <span className="ml-1 text-muted-foreground">
-                        ({used}/{cap})
-                      </span>
-                    </Badge>
-
-                    {/* ✅ NEU: Quick-Add Modal-Trigger */}
-                    <AddEntryModal workDay={workDay} category={cat} />
-                  </div>
-
-                  {cap === 0 ? (
-                    <div className="text-sm text-muted-foreground">
-                      Keine Mitarbeiter in dieser Rubrik angelegt.
-                    </div>
-                  ) : cellEntries.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">Keine Einträge.</div>
-                  ) : (
-                    <ul className="space-y-1">
-                      {cellEntries.map((e) => (
-                        <li key={e.id} className="text-sm">
-                          <span className="font-medium">{e.title || "—"}</span> · {e.aw} AW
-                          {e.drop_off && e.pick_up && (
-                            <span className="text-muted-foreground">
-                              {" "}
-                              · {e.drop_off}–{e.pick_up}
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+      {/* Wochen-Rahmen + Grid-Trennlinien */}
+      <div className="rounded-2xl border overflow-hidden">
+        <div
+          className={`grid grid-cols-[200px_repeat(${WEEK_DAYS},1fr)] divide-x divide-y divide-gray-200 dark:divide-neutral-800`}
+        >
+          {/* Kopfzeile: Rubrik + Tage */}
+          <div className="p-3 font-medium">Rubrik</div>
+          {days.map((d, i) => {
+            const iso = formatISO(d);
+            const used = usedAwByDay.get(iso) ?? 0;
+            const free = Math.max(0, totalCapacityPerDay - used);
+            const freePct =
+              totalCapacityPerDay > 0 ? Math.round((free / totalCapacityPerDay) * 100) : null;
+            return (
+              <div key={i} className="p-3 font-medium">
+                <div className="flex items-center">
+                  {formatWeekdayShort(d)}
+                  {pctBadge(freePct)}
                 </div>
-              );
-            })}
-          </div>
-        ))}
+              </div>
+            );
+          })}
+
+          {/* Rubrik-Zeilen + Tageszellen */}
+          {(Object.keys(CATEGORY_LABEL) as EmployeeCategory[]).map((cat) => (
+            <div key={cat} className="contents">
+              <div className="p-3 font-medium">{CATEGORY_LABEL[cat]}</div>
+
+              {days.map((d, i) => {
+                const workDay = formatISO(d);
+                const key = `${workDay}__${cat}`;
+                const cap = capacityByCat[cat] ?? 0;
+                const used = usedAwByKey.get(key) ?? 0;
+                const free = Math.max(0, cap - used);
+                const cellEntries = entriesByKey.get(key) ?? [];
+
+                return (
+                  <div key={i} className="p-3">
+                    {/* Kopf der Zelle: Kapazität + Quick-Add */}
+                    <div className="mb-2 flex items-center justify-between">
+                      <Badge variant="secondary">
+                        frei: <span className="ml-1 font-semibold">{free} AW</span>
+                        <span className="ml-1 text-muted-foreground">
+                          ({used}/{cap})
+                        </span>
+                      </Badge>
+                      <AddEntryModal workDay={workDay} category={cat} />
+                    </div>
+
+                    {cap === 0 ? (
+                      <div className="text-sm text-muted-foreground">
+                        Keine Mitarbeiter in dieser Rubrik angelegt.
+                      </div>
+                    ) : cellEntries.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">Keine Einträge.</div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {cellEntries.map((e) => (
+                          <li key={e.id} className="text-sm">
+                            <span className="font-medium">{e.title || "—"}</span> · {e.aw} AW
+                            {e.drop_off && e.pick_up && (
+                              <span className="text-muted-foreground">
+                                {" "}
+                                · {e.drop_off}–{e.pick_up}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
