@@ -58,7 +58,8 @@ function getBaseUrl() {
   if (env) return env;
   const h = headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (process.env.NODE_ENV === "production" ? "https" : "http");
+  const proto =
+    h.get("x-forwarded-proto") ?? (process.env.NODE_ENV === "production" ? "https" : "http");
   return `${proto}://${host}`;
 }
 
@@ -117,7 +118,11 @@ async function fetchEntries(from: string, to: string): Promise<DayEntry[]> {
   return data.entries ?? [];
 }
 
-export default async function Page({ searchParams }: { searchParams?: { start?: string } }) {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: { start?: string };
+}) {
   // 1) Woche bestimmen
   const now = new Date();
   const todayUTC = toDate(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -162,12 +167,17 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
   }
 
   // ---------- Badges ----------
-  // Prozent-Badge für freie Kapazität (rubrik-basiert).
+  // Prozent-Badge für freie Kapazität je Rubrik (im Tageskopf).
   // <0% => Überplanung: tiefrot
   function pctBadge(freePct: number | null, compact = false) {
     if (freePct === null) {
       return (
-        <span className={"inline-flex items-center rounded-full bg-gray-100 text-gray-800 " + (compact ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]")}>
+        <span
+          className={
+            "inline-flex items-center rounded-full bg-gray-100 text-gray-800 " +
+            (compact ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]")
+          }
+        >
           —%
         </span>
       );
@@ -230,7 +240,6 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
           <div className="p-3 font-medium">Rubrik</div>
           {days.map((d, i) => {
             const iso = formatISO(d);
-            // Tages-Prozent-Badge ENTFERNT – nur Datum stehen lassen
             return (
               <div key={i} className="p-3 font-medium">
                 <div className="flex items-center justify-between">
@@ -247,9 +256,13 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
 
                     return (
                       <div key={cat} className="flex items-center justify-between tabular-nums">
-                        <span className="text-black/80 dark:text-white/80">{CATEGORY_LABEL[cat]}</span>
+                        <span className="text-black/80 dark:text-white/80">
+                          {CATEGORY_LABEL[cat]}
+                        </span>
                         <span className="flex items-center gap-2">
-                          <span>{usedCat}/{cap} AW</span>
+                          <span>
+                            {usedCat}/{cap} AW
+                          </span>
                           {pctBadge(freePct, true)}
                         </span>
                       </div>
@@ -270,18 +283,38 @@ export default async function Page({ searchParams }: { searchParams?: { start?: 
                 const key = `${workDay}__${cat}`;
                 const cap = capacityByCat[cat] ?? 0;
                 const used = usedAwByKey.get(key) ?? 0;
-                const free = Math.max(0, cap - used);
+
+                // NEU: Delta statt direkt clampen – zeigt Überplanung deutlich an
+                const delta = cap - used; // >0 = frei, <0 = überplant
+                const freeAw = Math.max(0, delta);
+                const overAw = Math.max(0, -delta);
+
                 const cellEntries = entriesByKey.get(key) ?? [];
 
                 return (
                   <div key={i} className="p-3">
                     {/* Kopf der Zelle: Kapazität + Quick-Add */}
                     <div className="mb-2 flex items-center justify-between">
-                      <Badge variant="secondary">
-                        frei: <span className="ml-1 font-semibold">{free} AW</span>
-                        <span className="ml-1 text-muted-foreground">
-                          ({used}/{cap})
-                        </span>
+                      <Badge
+                        variant="secondary"
+                        className={delta < 0 ? "bg-red-600 text-white" : ""}
+                        title={delta < 0 ? "Überplanung in AW" : "Freie AW"}
+                      >
+                        {delta >= 0 ? (
+                          <>
+                            frei: <span className="ml-1 font-semibold">{freeAw} AW</span>
+                            <span className="ml-1 text-muted-foreground">
+                              ({used}/{cap})
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            überplant: <span className="ml-1 font-semibold">{overAw} AW</span>
+                            <span className="ml-1 text-white/80">
+                              ({used}/{cap})
+                            </span>
+                          </>
+                        )}
                       </Badge>
                       <AddEntryModal workDay={workDay} category={cat} />
                     </div>
