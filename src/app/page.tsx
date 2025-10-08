@@ -52,6 +52,26 @@ function formatWeekdayShort(d: Date) {
   return `${wd} ${dd}.${mm}.`;
 }
 
+// Farb- und Breitenlogik für Auslastungsbalken
+function utilizationColorClass(util: number) {
+  // util = verwendete AW / Kapazität (>= 0, kann >1 sein)
+  if (util <= 0.8) return "bg-green-500";   // viel Puffer
+  if (util <= 1.0) return "bg-green-600";   // gut ausgelastet
+  if (util <= 1.2) return "bg-amber-500";   // leicht überbucht
+  return "bg-red-600";                      // stark überbucht
+}
+function clampBarWidth(util: number) {
+  // Bis 150% visualisieren, darüber deckeln
+  const pct = Math.min(util, 1.5) * 100;
+  return `${pct}%`;
+}
+// Zeit-Helper für Sortierung der Termine
+function timeToMinutes(t: string | null) {
+  if (!t) return 24 * 60 + 1;
+  const [h, m] = t.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
 // ---------- URL / API ----------
 function getBaseUrl() {
   const env = (process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL)?.replace(/\/$/, "");
@@ -109,7 +129,6 @@ async function fetchEmployees(): Promise<Employee[]> {
   const data = await res.json();
   return data.employees ?? [];
 }
-
 async function fetchEntries(from: string, to: string): Promise<DayEntry[]> {
   const qs = new URLSearchParams({ from, to });
   const res = await apiFetch(`/api/day-entries?${qs.toString()}`);
@@ -118,6 +137,7 @@ async function fetchEntries(from: string, to: string): Promise<DayEntry[]> {
   return data.entries ?? [];
 }
 
+// ---------- Hauptkomponente ----------
 export default async function Page({
   searchParams,
 }: {
@@ -146,14 +166,12 @@ export default async function Page({
     const aw = Math.round((BASE_AW_PER_DAY * (e.performance || 100)) / 100);
     capacityByCat[e.category] += aw;
   }
-  const totalCapacityPerDay =
-    (capacityByCat.MECH ?? 0) + (capacityByCat.BODY ?? 0) + (capacityByCat.PREP ?? 0);
 
-  // 4) Tage der Woche, Einträge mappen
+  // 4) Tage/Eingaben mappen
   const days = Array.from({ length: WEEK_DAYS }, (_, i) => addDays(weekStart, i));
   const entriesByKey = new Map<string, DayEntry[]>();
   const usedAwByKey = new Map<string, number>();
-  const usedAwByDay = new Map<string, number>(); // für Prozent-Badge oben
+  const entriesByDay = new Map<string, DayEntry[]>(); // für Termine-Sidebar
 
   for (const entry of entries) {
     const key = `${entry.work_day}__${entry.category}`;
@@ -162,52 +180,82 @@ export default async function Page({
     const usedCell = usedAwByKey.get(key) ?? 0;
     usedAwByKey.set(key, usedCell + (entry.aw || 0));
 
-    const usedDay = usedAwByDay.get(entry.work_day) ?? 0;
-    usedAwByDay.set(entry.work_day, usedDay + (entry.aw || 0));
-  }
-
-  // ---------- Badges ----------
-  // Prozent-Badge für freie Kapazität je Rubrik (im Tageskopf).
-  // <0% => Überplanung: tiefrot
-  function pctBadge(freePct: number | null, compact = false) {
-    if (freePct === null) {
-      return (
-        <span
-          className={
-            "inline-flex items-center rounded-full bg-gray-100 text-gray-800 " +
-            (compact ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]")
-          }
-        >
-          —%
-        </span>
-      );
-    }
-    let cls =
-      freePct >= 40
-        ? "bg-green-100 text-green-800"
-        : freePct >= 15
-        ? "bg-yellow-100 text-yellow-800"
-        : "bg-red-100 text-red-800";
-    if (freePct < 0) {
-      cls = "bg-red-600 text-white"; // Überplanung -> tiefrot
-    }
-    return (
-      <span
-        className={
-          "inline-flex items-center rounded-full font-semibold " +
-          (compact ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]") +
-          " " +
-          cls
-        }
-        title="freie Kapazität (in %)"
-      >
-        {freePct}%
-      </span>
-    );
+    // für Termine-Sidebar: alle Einträge des Tages sammeln
+    (entriesByDay.get(entry.work_day) ??
+      entriesByDay.set(entry.work_day, []).get(entry.work_day)!)?.push(entry);
   }
 
   return (
     <div className="mx-auto max-w-[1200px] p-4">
+      {/* LINKER REITER + SIDEBAR (ohne JS, via peer-checked) */}
+      <div className="fixed inset-y-0 left-0 z-50">
+        {/* Toggle */}
+        <input id="termine-toggle" type="checkbox" className="peer hidden" />
+
+        {/* Reiter / Tab, ragt links rein */}
+        <label
+          htmlFor="termine-toggle"
+          className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-pointer rounded-r-xl bg-primary px-3 py-2 text-primary-foreground shadow-lg hover:brightness-105"
+          title="Termine anzeigen"
+        >
+          Termine
+        </label>
+
+        {/* Slide-over Panel */}
+        <div className="pointer-events-auto fixed left-0 top-0 h-screen w-[320px] -translate-x-full transform bg-white shadow-xl transition-all duration-300 ease-in-out dark:bg-neutral-900 peer-checked:translate-x-0">
+          <div className="flex items-center justify-between border-b px-4 py-3">
+            <div className="font-semibold">Termine – Woche {weekNumber}</div>
+            {/* Close */}
+            <label
+              htmlFor="termine-toggle"
+              className="cursor-pointer rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-gray-100 dark:hover:bg-neutral-800"
+              title="Schließen"
+            >
+              Schließen
+            </label>
+          </div>
+
+          {/* Inhalt: Termine nach Tag */}
+          <div className="h-[calc(100vh-52px)] overflow-y-auto px-4 py-3">
+            {days.map((d, idx) => {
+              const workDay = formatISO(d);
+              const appts =
+                (entriesByDay.get(workDay) ?? [])
+                  .filter((e) => e.drop_off || e.pick_up)
+                  .sort((a, b) => timeToMinutes(a.drop_off) - timeToMinutes(b.drop_off));
+
+              return (
+                <div key={idx} className="mb-5">
+                  <div className="mb-2 text-sm font-medium text-muted-foreground">
+                    {formatWeekdayShort(d)}
+                  </div>
+                  {appts.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">keine Termine</div>
+                  ) : (
+                    <ul className="space-y-1">
+                      {appts.map((e) => (
+                        <li
+                          key={e.id}
+                          className="flex items-center justify-between rounded-lg border px-2 py-1 text-sm"
+                        >
+                          <span className="tabular-nums">
+                            {e.drop_off ?? "—"}
+                            {e.pick_up ? `–${e.pick_up}` : ""}
+                          </span>
+                          <span className="ml-2 truncate pl-2">
+                            {e.title || e.work_text || "Auftrag"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* Kopf mit Navigation */}
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Aftersales Planner</h1>
@@ -246,25 +294,30 @@ export default async function Page({
                   <span>{formatWeekdayShort(d)}</span>
                 </div>
 
-                {/* Auslastung je Rubrik direkt unter dem Tageskopf */}
-                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                {/* Auslastung je Rubrik (Balken) */}
+                <div className="mt-2 space-y-2 text-xs">
                   {(Object.keys(CATEGORY_LABEL) as EmployeeCategory[]).map((cat) => {
                     const cap = capacityByCat[cat] ?? 0;
                     const usedCat = usedAwByKey.get(`${iso}__${cat}`) ?? 0;
-                    const freeAw = cap - usedCat;
-                    const freePct = cap > 0 ? Math.round((freeAw / cap) * 100) : null;
+
+                    const util = cap > 0 ? usedCat / cap : 0; // 0..n
+                    const barClass = utilizationColorClass(util);
+                    const barWidth = clampBarWidth(util);
 
                     return (
-                      <div key={cat} className="flex items-center justify-between tabular-nums">
-                        <span className="text-black/80 dark:text-white/80">
-                          {CATEGORY_LABEL[cat]}
-                        </span>
-                        <span className="flex items-center gap-2">
-                          <span>
+                      <div key={cat} className="space-y-1">
+                        <div className="flex items-center justify-between tabular-nums">
+                          <span className="text-black/80 dark:text-white/80">
+                            {CATEGORY_LABEL[cat]}
+                          </span>
+                          <span className="text-muted-foreground">
                             {usedCat}/{cap} AW
                           </span>
-                          {pctBadge(freePct, true)}
-                        </span>
+                        </div>
+
+                        <div className="h-1.5 w-full rounded-full bg-gray-200 dark:bg-neutral-800 overflow-hidden">
+                          <div className={`h-1.5 ${barClass}`} style={{ width: barWidth }} />
+                        </div>
                       </div>
                     );
                   })}
@@ -284,7 +337,12 @@ export default async function Page({
                 const cap = capacityByCat[cat] ?? 0;
                 const used = usedAwByKey.get(key) ?? 0;
 
-                // NEU: Delta statt direkt clampen – zeigt Überplanung deutlich an
+                // Utilization für farbigen Balken in der Zelle (0..n)
+                const utilCell = cap > 0 ? used / cap : 0;
+                const barClassCell = utilizationColorClass(utilCell);
+                const barWidthCell = clampBarWidth(utilCell);
+
+                // Delta statt clampen – zeigt Überplanung deutlich an
                 const delta = cap - used; // >0 = frei, <0 = überplant
                 const freeAw = Math.max(0, delta);
                 const overAw = Math.max(0, -delta);
@@ -317,6 +375,11 @@ export default async function Page({
                         )}
                       </Badge>
                       <AddEntryModal workDay={workDay} category={cat} />
+                    </div>
+
+                    {/* Auslastungs-Balken in der Zelle */}
+                    <div className="mb-2 h-1.5 w-full rounded-full bg-gray-200 dark:bg-neutral-800 overflow-hidden">
+                      <div className={`h-1.5 ${barClassCell}`} style={{ width: barWidthCell }} />
                     </div>
 
                     {cap === 0 ? (
