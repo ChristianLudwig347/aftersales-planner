@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Category = "MECH" | "BODY" | "PREP";
 
@@ -22,6 +22,9 @@ function todayISO() {
   return local.toISOString().slice(0, 10);
 }
 
+const toErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
 export default function TerminplanerPage() {
   const [date, setDate] = useState<string>(todayISO());
   const [category, setCategory] = useState<Category>("MECH");
@@ -36,7 +39,7 @@ export default function TerminplanerPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
@@ -47,16 +50,16 @@ export default function TerminplanerPage() {
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json?.error || "Load failed");
       setList(json.items ?? []);
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
+    } catch (error: unknown) {
+      setErr(toErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }
+  }, [date]);
 
   useEffect(() => {
-    load();
-  }, [date]);
+    void load();
+  }, [load]);
 
   async function createEntry() {
     setLoading(true);
@@ -82,8 +85,8 @@ export default function TerminplanerPage() {
 
       setForm({ title: "", work_text: "", drop_off: "08:00", pick_up: "16:30", aw: 0 });
       await load();
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
+    } catch (error: unknown) {
+      setErr(toErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -101,8 +104,8 @@ export default function TerminplanerPage() {
       if (!res.ok || !json.ok)
         throw new Error(json?.error || "Löschen fehlgeschlagen");
       await load();
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
+    } catch (error: unknown) {
+      setErr(toErrorMessage(error));
     } finally {
       setLoading(false);
     }

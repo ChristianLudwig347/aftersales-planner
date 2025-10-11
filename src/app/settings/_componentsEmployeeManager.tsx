@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 type Employee = {
   id: string;
@@ -9,6 +9,9 @@ type Employee = {
 };
 
 const CATEGORIES: Array<Employee["category"]> = ["MECH", "BODY", "PREP"];
+
+const toErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
 
 export default function EmployeeManager() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -28,8 +31,8 @@ export default function EmployeeManager() {
       const res = await fetch("/api/employees", { cache: "no-store" });
       const data = await res.json();
       setEmployees(data.employees ?? []);
-    } catch (e: any) {
-      setError(e?.message ?? "Fehler beim Laden");
+    } catch (error: unknown) {
+      setError(toErrorMessage(error) || "Fehler beim Laden");
     } finally {
       setLoading(false);
     }
@@ -37,7 +40,7 @@ export default function EmployeeManager() {
 
   useEffect(() => { load(); }, []);
 
-  async function createEmployee(e: React.FormEvent) {
+  async function createEmployee(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError(null);
@@ -53,8 +56,8 @@ export default function EmployeeManager() {
       setCategory("MECH");
       setPerformance(100);
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? "Speichern fehlgeschlagen");
+    } catch (error: unknown) {
+      setError(toErrorMessage(error) || "Speichern fehlgeschlagen");
     } finally {
       setSaving(false);
     }
@@ -68,8 +71,8 @@ export default function EmployeeManager() {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data?.error || "Löschen fehlgeschlagen");
       setEmployees(prev => prev.filter(e => e.id !== id));
-    } catch (e: any) {
-      setError(e?.message ?? "Löschen fehlgeschlagen");
+    } catch (error: unknown) {
+      setError(toErrorMessage(error) || "Löschen fehlgeschlagen");
     }
   }
 

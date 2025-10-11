@@ -15,7 +15,8 @@ export async function GET() {
     }
     const { rows } = await sql`select current_database() as db, current_user as usr, now() as ts`;
     return NextResponse.json({ ok: true, where: 'db', ...rows[0] });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, where: 'db', msg: String(e?.message ?? e) }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ ok: false, where: 'db', msg: message }, { status: 500 });
   }
 }

@@ -19,8 +19,8 @@ export function useEmployees() {
       const res = await fetch(API, { cache: "no-store" });
       if (!res.ok) throw new Error(await res.text());
       setData(await res.json());
-    } catch (e: any) {
-      setError(e);
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error : new Error(String(error)));
     } finally {
       setLoading(false);
     }
@@ -30,7 +30,11 @@ export function useEmployees() {
 
   /** akzeptiert auch Objekte mit id – serverseitig wird nur name/performance/category genutzt */
   const createEmployee = useCallback(
-    async (input: { name: string; performance: number; category: EmployeeCategory } | any) => {
+    async (
+      input:
+        | Pick<Employee, "name" | "performance" | "category"> &
+            Partial<Pick<Employee, "id">>
+    ) => {
       const payload = {
         name: input.name,
         performance: input.performance,
@@ -51,10 +55,10 @@ export function useEmployees() {
         const created: Employee = await res.json();
         setData((prev) => [created, ...prev.filter((e) => e.id !== tmpId)]);
         return created;
-      } catch (e) {
+      } catch (error) {
         // Rollback
         setData((prev) => prev.filter((e) => e.id !== tmpId));
-        throw e;
+        throw error;
       }
     },
     []
@@ -67,10 +71,10 @@ export function useEmployees() {
       try {
         const res = await fetch(`${API}?id=${encodeURIComponent(id)}`, { method: "DELETE" });
         if (!res.ok) throw new Error(await res.text());
-      } catch (e) {
+      } catch (error) {
         // Rollback
         setData(snapshot);
-        throw e;
+        throw error;
       }
     },
     [data]

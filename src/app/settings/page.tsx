@@ -2,7 +2,7 @@
 import { headers, cookies } from "next/headers";
 import SettingsForm from "./SettingsForm";
 
-type Opening = Record<string, any>;
+type Opening = Record<string, unknown>;
 type SettingsRow = { timezone: string; opening: Opening | null };
 
 const DEFAULT_OPENING: Opening = {

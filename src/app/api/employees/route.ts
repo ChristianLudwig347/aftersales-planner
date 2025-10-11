@@ -49,26 +49,40 @@ const EmployeeSchema = z.object({
 });
 
 // Backwards-Compat: {rubric, efficiency}
-function normalize(body: any) {
-  if (body && body.rubric && body.efficiency != null) {
+function normalize(body: unknown) {
+  if (
+    body &&
+    typeof body === "object" &&
+    "rubric" in body &&
+    "efficiency" in body
+  ) {
+    const legacy = body as {
+      name?: unknown;
+      rubric?: unknown;
+      efficiency?: unknown;
+    };
     return {
-      name: body.name,
-      category: body.rubric,
-      performance: Number(body.efficiency),
+      name: legacy.name,
+      category: legacy.rubric,
+      performance: legacy.efficiency,
     };
   }
   return body;
 }
 
 // Body-Parser der beide Content-Types kann
-async function readBody(req: NextRequest) {
+async function readBody(req: NextRequest): Promise<unknown> {
   const ct = req.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
     return await req.json();
   }
   if (ct.includes("application/x-www-form-urlencoded") || ct.includes("multipart/form-data")) {
     const fd = await req.formData();
-    return Object.fromEntries(fd.entries());
+    const record: Record<string, unknown> = {};
+    for (const [key, value] of fd.entries()) {
+      record[key] = value;
+    }
+    return record;
   }
   // Fallback: versuchen JSON
   try {
@@ -80,12 +94,15 @@ async function readBody(req: NextRequest) {
 
 // ---- Handlers --------------------------------------------------------------
 
+const toErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
 export async function GET() {
   try {
     const employees = await listEmployees();
     return j(200, { ok: true, employees });
-  } catch (err: any) {
-    return j(500, { ok: false, error: String(err?.message ?? err) });
+  } catch (error: unknown) {
+    return j(500, { ok: false, error: toErrorMessage(error) });
   }
 }
 
@@ -98,11 +115,11 @@ export async function POST(req: NextRequest) {
     const parsed = EmployeeSchema.parse(raw);
     const employee = await createEmployee(parsed);
     return j(201, { ok: true, employee });
-  } catch (err: any) {
-    if (err instanceof ZodError) {
-      return j(400, { ok: false, error: "Validation failed", issues: err.issues });
+  } catch (error: unknown) {
+    if (error instanceof ZodError) {
+      return j(400, { ok: false, error: "Validation failed", issues: error.issues });
     }
-    return j(500, { ok: false, error: String(err?.message ?? err) });
+    return j(500, { ok: false, error: toErrorMessage(error) });
   }
 }
 
@@ -120,11 +137,11 @@ export async function PATCH(req: NextRequest) {
     if (!employee) return j(404, { ok: false, error: "Not found" });
 
     return j(200, { ok: true, employee });
-  } catch (err: any) {
-    if (err instanceof ZodError) {
-      return j(400, { ok: false, error: "Validation failed", issues: err.issues });
+  } catch (error: unknown) {
+    if (error instanceof ZodError) {
+      return j(400, { ok: false, error: "Validation failed", issues: error.issues });
     }
-    return j(500, { ok: false, error: String(err?.message ?? err) });
+    return j(500, { ok: false, error: toErrorMessage(error) });
   }
 }
 
@@ -141,7 +158,7 @@ export async function DELETE(req: NextRequest) {
     if (!ok) return j(404, { ok: false, error: "Not found" });
 
     return j(200, { ok: true, id });
-  } catch (err: any) {
-    return j(500, { ok: false, error: String(err?.message ?? err) });
+  } catch (error: unknown) {
+    return j(500, { ok: false, error: toErrorMessage(error) });
   }
 }

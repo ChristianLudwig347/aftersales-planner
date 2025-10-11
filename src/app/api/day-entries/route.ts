@@ -20,6 +20,9 @@ function j(status: number, body: unknown) {
   return NextResponse.json(body, { status, headers: { "cache-control": "no-store" } });
 }
 
+const toErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -53,8 +56,8 @@ export async function GET(req: NextRequest) {
     `;
 
     return j(200, { ok: true, entries: rows });
-  } catch (err: any) {
-    return j(500, { ok: false, error: String(err?.message ?? err) });
+  } catch (error: unknown) {
+    return j(500, { ok: false, error: toErrorMessage(error) });
   }
 }
 
@@ -95,11 +98,11 @@ export async function POST(req: NextRequest) {
     `;
 
     return j(201, { ok: true, entry: rows[0] });
-  } catch (err: any) {
-    if (err instanceof ZodError) {
-      return j(400, { ok: false, error: "Validation failed", issues: err.issues });
+  } catch (error: unknown) {
+    if (error instanceof ZodError) {
+      return j(400, { ok: false, error: "Validation failed", issues: error.issues });
     }
-    return j(500, { ok: false, error: String(err?.message ?? err) });
+    return j(500, { ok: false, error: toErrorMessage(error) });
   }
 }
 
@@ -115,7 +118,7 @@ export async function DELETE(req: NextRequest) {
     if (rows.length === 0) return j(404, { ok: false, error: "Not found" });
 
     return j(200, { ok: true, id });
-  } catch (err: any) {
-    return j(500, { ok: false, error: String(err?.message ?? err) });
+  } catch (error: unknown) {
+    return j(500, { ok: false, error: toErrorMessage(error) });
   }
 }

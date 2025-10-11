@@ -4,6 +4,9 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 
+const toErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
 export default function LoginPage() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -34,8 +37,8 @@ export default function LoginPage() {
       // ✅ Cookie ist gesetzt → Server Components (Layout) sofort neu rendern
       router.replace(next);
       router.refresh();
-    } catch (err: any) {
-      setError(err?.message ?? 'Login fehlgeschlagen');
+    } catch (error: unknown) {
+      setError(toErrorMessage(error) ?? 'Login fehlgeschlagen');
     } finally {
       setPending(false);
     }
