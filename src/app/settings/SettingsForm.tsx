@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
-type Opening = Record<string, any>;
+type Opening = Record<string, unknown>;
 type Props = { initial: { timezone: string; opening: Opening } };
 
 export default function SettingsForm({ initial }: Props) {
@@ -48,9 +48,10 @@ export default function SettingsForm({ initial }: Props) {
 
       setMsg("Gespeichert.");
       router.refresh();
-    } catch (err: any) {
-      console.error("[SettingsForm] fetch failed", err);
-      setMsg(`Netzwerkfehler: ${String(err?.message ?? err)}`);
+    } catch (error: unknown) {
+      console.error("[SettingsForm] fetch failed", error);
+      const message = error instanceof Error ? error.message : String(error);
+      setMsg(`Netzwerkfehler: ${message}`);
     }
   }
 

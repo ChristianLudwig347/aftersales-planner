@@ -34,28 +34,38 @@ async function requireMaster(req: NextRequest) {
   }
 }
 
-async function readBody(req: NextRequest) {
+async function readBody(req: NextRequest): Promise<unknown> {
   const ct = req.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
     return await req.json();
   }
   if (ct.includes("application/x-www-form-urlencoded") || ct.includes("multipart/form-data")) {
     const fd = await req.formData();
-    const obj: any = Object.fromEntries(fd.entries());
+    const obj: Record<string, unknown> = {};
+    for (const [key, value] of fd.entries()) {
+      obj[key] = value;
+    }
     if (typeof obj.opening === "string") {
-      try { obj.opening = JSON.parse(obj.opening); } catch {}
+      try {
+        obj.opening = JSON.parse(obj.opening);
+      } catch {
+        // handled later
+      }
     }
     return obj;
   }
   try { return await req.json(); } catch { return null; }
 }
 
+const toErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
 export async function GET() {
   try {
     const { rows } = await sql`SELECT timezone, opening FROM public.settings WHERE id = 1`;
     return j(200, { ok: true, settings: rows[0] ?? null });
-  } catch (err: any) {
-    return j(500, { ok: false, error: String(err?.message ?? err) });
+  } catch (error: unknown) {
+    return j(500, { ok: false, error: toErrorMessage(error) });
   }
 }
 
@@ -64,9 +74,15 @@ export async function PUT(req: NextRequest) {
   if (!guard.ok) return j(guard.status, { ok: false, error: guard.error });
 
   try {
-    const body = (await readBody(req)) ?? {};
-    const tz = typeof body.timezone === "string" && body.timezone.trim()
-      ? body.timezone.trim()
+    const rawBody = (await readBody(req)) ?? {};
+    const body =
+      typeof rawBody === "object" && rawBody !== null
+        ? (rawBody as Record<string, unknown>)
+        : {};
+    const timezoneCandidate = body.timezone;
+    const tz =
+      typeof timezoneCandidate === "string" && timezoneCandidate.trim()
+        ? timezoneCandidate.trim()
       : "Europe/Berlin";
 
     let opening = body.opening;
@@ -89,7 +105,7 @@ export async function PUT(req: NextRequest) {
 
     const { rows } = await sql`SELECT timezone, opening FROM public.settings WHERE id = 1`;
     return j(200, { ok: true, settings: rows[0] ?? null });
-  } catch (err: any) {
-    return j(500, { ok: false, error: String(err?.message ?? err) });
+  } catch (error: unknown) {
+    return j(500, { ok: false, error: toErrorMessage(error) });
   }
 }

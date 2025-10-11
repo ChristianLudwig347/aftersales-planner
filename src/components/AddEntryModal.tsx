@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,15 +94,15 @@ export default function AddEntryModal({
 
       // Optionaler Callback des Parents
       onCreated?.();
-    } catch (e: any) {
-      setError(e?.message || "Unbekannter Fehler beim Anlegen.");
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Unbekannter Fehler beim Anlegen.");
     } finally {
       setSubmitting(false);
     }
   }
 
   // ENTER-Submit im letzten Feld erlauben
-  function onKeyDownEnter(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+  function onKeyDownEnter(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       if (!submitting) handleSubmit();

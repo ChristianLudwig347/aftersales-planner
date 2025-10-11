@@ -68,7 +68,11 @@ export default function MechanicsTable({
     setEditing((m) => ({ ...m, [e.id]: { name: e.name, category: e.category, performance: e.performance } }));
   }
   function cancelEdit(id: string) {
-    setEditing(({ [id]: _, ...rest }) => rest);
+    setEditing((map) => {
+      const next = { ...map };
+      delete next[id];
+      return next;
+    });
   }
   async function saveEdit(id: string) {
     setMsg(null);

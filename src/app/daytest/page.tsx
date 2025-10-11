@@ -44,6 +44,9 @@ const CAT_LABEL: Record<DayCategory, string> = {
   PREP: "Aufbereitung",
 };
 
+const toErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
 function todayISO() {
   const d = new Date();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -77,8 +80,8 @@ export default function DayTestPage() {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data?.error || "Fehler beim Laden der Bilanz");
       setSummary(data.summary);
-    } catch (e: any) {
-      setErr(e?.message ?? "Bilanz-Fehler");
+    } catch (error: unknown) {
+      setErr(toErrorMessage(error) || "Bilanz-Fehler");
     }
   }
 
@@ -89,8 +92,8 @@ export default function DayTestPage() {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data?.error || "Fehler beim Laden der Einträge");
       setEntries(data.entries);
-    } catch (e: any) {
-      setErr(e?.message ?? "Eintrags-Fehler");
+    } catch (error: unknown) {
+      setErr(toErrorMessage(error) || "Eintrags-Fehler");
     }
   }
 
@@ -139,8 +142,8 @@ export default function DayTestPage() {
 
       await loadSummary();
       await loadEntries();
-    } catch (e: any) {
-      setErr(e?.message ?? "Fehler");
+    } catch (error: unknown) {
+      setErr(toErrorMessage(error) || "Fehler");
     } finally {
       setBusy(false);
     }

@@ -7,12 +7,17 @@ export const runtime = "nodejs";
 
 const BASE_MINUTES_PER_DAY = 8 * 60; // 480
 const BASE_AW_PER_DAY = 96;
+const CATEGORIES = ["MECH", "BODY", "PREP"] as const;
+type Category = (typeof CATEGORIES)[number];
 
 function capFromPerformance(pct: number) {
   const minutes = Math.round((BASE_MINUTES_PER_DAY * (pct || 100)) / 100);
   const aw = Math.round((BASE_AW_PER_DAY * (pct || 100)) / 100);
   return { minutes, aw };
 }
+
+const toErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
 
 export async function GET(req: NextRequest) {
   try {
@@ -24,17 +29,14 @@ export async function GET(req: NextRequest) {
     start.setHours(0, 0, 0, 0);
 
     const employees = await listEmployees();
-    const CATS = ["MECH", "BODY", "PREP"] as const;
 
     const days = Array.from({ length: daysParam }).map((_, i) => {
       const d = new Date(start);
       d.setDate(d.getDate() + i);
       const date = d.toISOString().slice(0, 10);
-      const categories: Record<(typeof CATS)[number], { minutes: number; aw: number }> = {
-        MECH: { minutes: 0, aw: 0 },
-        BODY: { minutes: 0, aw: 0 },
-        PREP: { minutes: 0, aw: 0 },
-      };
+      const categories = Object.fromEntries(
+        CATEGORIES.map((cat) => [cat, { minutes: 0, aw: 0 }])
+      ) as Record<Category, { minutes: number; aw: number }>;
       for (const e of employees) {
         const cap = capFromPerformance(e.performance);
         categories[e.category].minutes += cap.minutes;
@@ -44,9 +46,9 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ ok: true, days });
-  } catch (err: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
-      { ok: false, error: String(err?.message ?? err) },
+      { ok: false, error: toErrorMessage(error) },
       { status: 500 }
     );
   }

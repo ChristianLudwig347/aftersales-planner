@@ -4,12 +4,11 @@ import { middleware } from "./middleware";
 import type { NextRequest } from "next/server";
 
 // --- jose mocken ------------------------------------------------------------
-vi.mock("jose", () => {
-  return {
-    jwtVerify: vi.fn(),
-  };
-});
+vi.mock("jose", () => ({
+  jwtVerify: vi.fn(),
+}));
 import { jwtVerify } from "jose";
+const mockedJwtVerify = vi.mocked(jwtVerify);
 
 // --- Helper zum Request-Bauen -----------------------------------------------
 function mkReq(pathname: string, cookieValue?: string): NextRequest {
@@ -64,7 +63,7 @@ describe("middleware", () => {
   });
 
   it("authenticated USER auf /settings → Redirect /?error=forbidden & 403 für API", async () => {
-    (jwtVerify as any).mockResolvedValue({
+    mockedJwtVerify.mockResolvedValue({
       payload: { userId: "u1", email: "u@e", role: "USER" },
     });
 
@@ -84,7 +83,7 @@ describe("middleware", () => {
   });
 
   it("authenticated MASTER auf /settings → Next", async () => {
-    (jwtVerify as any).mockResolvedValue({
+    mockedJwtVerify.mockResolvedValue({
       payload: { userId: "u1", email: "u@e", role: "MASTER" },
     });
 
@@ -95,7 +94,7 @@ describe("middleware", () => {
   });
 
   it("authenticated USER auf /terminplaner → Next (nur Login nötig)", async () => {
-    (jwtVerify as any).mockResolvedValue({
+    mockedJwtVerify.mockResolvedValue({
       payload: { userId: "u1", email: "u@e", role: "USER" },
     });
     const req = mkReq("/terminplaner", "dummy");

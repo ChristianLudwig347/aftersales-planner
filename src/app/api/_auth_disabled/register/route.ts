@@ -13,6 +13,10 @@ const RegisterSchema = z.object({
   password: z.string().min(8).max(200),
 });
 
+function toErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -36,10 +40,10 @@ export async function POST(req: Request) {
       httpOnly: true, sameSite: 'lax', path: '/', secure: process.env.NODE_ENV === 'production', maxAge: 60 * 60 * 24 * 7,
     });
     return res;
-  } catch (e: any) {
-    if (e instanceof ZodError) {
-      return NextResponse.json({ ok: false, error: 'validation', issues: e.issues }, { status: 400 });
+  } catch (error: unknown) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ ok: false, error: 'validation', issues: error.issues }, { status: 400 });
     }
-    return NextResponse.json({ ok: false, error: String(e?.message ?? e) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: toErrorMessage(error) }, { status: 500 });
   }
 }

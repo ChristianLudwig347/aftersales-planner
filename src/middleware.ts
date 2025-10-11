@@ -1,14 +1,16 @@
 // src/middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { jwtVerify } from "jose";
+import { jwtVerify, type JWTPayload } from "jose";
 
 const secretRaw = process.env.AUTH_SECRET;
 const secret = secretRaw ? new TextEncoder().encode(secretRaw) : undefined;
 
 // ---- Helpers ---------------------------------------------------------------
 
-async function getSession(req: NextRequest) {
+type SessionPayload = JWTPayload & { role?: string };
+
+async function getSession(req: NextRequest): Promise<SessionPayload | null> {
   const token = req.cookies.get("ae.session")?.value;
   if (!token || !secret) return null;
   try {
@@ -17,7 +19,7 @@ async function getSession(req: NextRequest) {
       clockTolerance: 5,            // 5s Toleranz gegen Clock Skew
     });
     // erwartet: { userId, email, role, ... }
-    return payload as any;
+    return payload as SessionPayload;
   } catch {
     return null;
   }

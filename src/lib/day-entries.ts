@@ -60,11 +60,17 @@ export async function createDayEntry(input: Omit<DayEntry,'id'|'created_at'|'cre
   return rows[0];
 }
 
-export async function updateDayEntry(id: string, patch: Partial<Omit<DayEntry,'id'|'created_at'>>): Promise<DayEntry | null> {
+export async function updateDayEntry(
+  id: string,
+  patch: Partial<Omit<DayEntry, 'id' | 'created_at'>>
+): Promise<DayEntry | null> {
   // dynamisch ein UPDATE bauen
   const fields: string[] = [];
-  const values: any[] = [];
-  const add = (col: string, val: any) => { fields.push(`${col} = $${fields.length + 1}`); values.push(val); };
+  const values: unknown[] = [];
+  const add = (col: string, val: unknown) => {
+    fields.push(`${col} = $${fields.length + 1}`);
+    values.push(val);
+  };
 
   if (patch.work_day !== undefined) add('work_day', patch.work_day);
   if (patch.drop_off !== undefined) add('drop_off', patch.drop_off);
